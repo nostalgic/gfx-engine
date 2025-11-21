@@ -1,0 +1,2069 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, minimum-scale=1.0, viewport-fit=cover">
+    <title>COMPUTER GRAPHICS by Nostalgic</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+                
+        html {
+            touch-action: manipulation; /* Prevents double-tap zoom */
+            -webkit-text-size-adjust: 100%; /* Prevents text scaling */
+        }
+        
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+            cursor: move;
+            touch-action: manipulation; /* Prevents double-tap zoom on body */
+            -webkit-user-select: none; /* Prevents text selection */
+            -webkit-touch-callout: none; /* Prevents context menu on touch */
+        }
+        
+        .control-panel {            
+            touch-action: manipulation;
+            -webkit-user-select: none;
+        }
+
+        
+        button, input, .control-input {
+            touch-action: manipulation;
+        }
+
+        #loadingScreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(45deg, #000, #111);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10001;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+            color: #fff;
+        }
+        
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid #4A9EFF;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            font-size: 28px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+        }
+        
+        .loading-progress {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 20px;
+        }
+        
+        .loading-tips {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.5);
+            text-align: center;
+            max-width: 300px;
+            line-height: 1.4;
+        }
+        
+        #loadingScreen.fade-out {
+            opacity: 0;
+            transition: opacity 0.5s ease-out;
+        }
+        
+        #canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);            
+            transition: all 0.3s ease;
+        }
+        
+        h3 {
+            color: #fff;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            margin-bottom: 0.5rem;
+        }
+
+        hr {
+            margin-bottom: 10px; 
+            border-top: 0; 
+            opacity: 0.2
+        }
+
+        .control-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 370px;
+            background: rgba(15, 15, 15, 0.05);
+            mix-blend-mode: luminosity;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            backdrop-filter: blur(20px);
+            z-index: 100;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            transition: all 0.3s ease;
+            overflow: hidden;
+            cursor: default;
+        }
+        
+        .control-panel.collapsed {
+            width: 51px;
+            /* height: 52px; */
+            overflow: hidden;
+            right: 20px; /* Ensure it stays positioned from the right */
+        }
+        
+        .control-panel.collapsed .panel-title {
+            display: none;
+        }
+        
+        .control-panel.collapsed .panel-header {
+            padding: 18px;
+            justify-content: center;
+            border-bottom: none;
+        }
+        
+        .control-panel.collapsed .tab-container {
+            /* display: none; */
+        }
+
+        .control-panel.fullCollapse {
+            width: 51px;
+            height: 52px;
+            overflow: hidden;
+            right: 20px;
+        }
+
+        .control-panel.fullCollapse .tab-container, .control-panel.fullCollapse .panel-title {
+            display: none;
+        }
+
+         /* .control-panel.collapsed .tab-nav {
+            height: 711px;
+         } */
+        
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+            position: relative;
+            height: 50px;
+            /* overflow: hidden; */
+        }
+        
+        .panel-title {
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        
+        .toggle-btn {
+            background: none;
+            border: none;
+            outline: none;
+            color: rgba(255, 255, 255, 0.7);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 4px;
+            border-radius: 0;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 50px;
+            height: 50px;
+            border-left: 1px solid transparent;
+            border-right: 1px solid transparent;
+        }
+        
+        .toggle-btn svg {
+            width: 18px;
+            height: 18px;
+        }
+        
+        .toggle-btn:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.1);
+            border-left: 1px solid rgba(255,255,255,0.3);
+        }
+
+        .control-panel.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .control-panel.collapsed .toggle-btn, .control-panel.collapsed .tab-nav  {
+            border-color: transparent;
+        }
+        
+        .tab-container {
+            /* border-bottom: 1px solid rgba(255, 255, 255, 0.1); */
+            display: flex;
+            flex-direction: row-reverse;
+        }
+        
+        .tab-nav {
+            /* display: flex; */
+            display: block;
+            width: 50px;
+            background: rgba(0, 0, 0, 0.2);
+            border-left: 1px solid rgba(255,255,255,0.3);
+        }
+        
+        .tab-btn {
+            flex: 1;
+            padding: 8px 0;
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 9px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-bottom: 1px solid rgba(255,255,255,0.3);
+            /* border-bottom: 1px solid rgba(74, 158, 255, 0.7); */
+            width: 50px;
+        }
+
+        .tab-btn:last-child {
+            border-bottom: none;
+        }
+        
+        .tab-btn:hover {
+            color: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .tab-btn.active {
+            color: #fff;
+            border-bottom-color: #4A9EFF;
+            background: #4A9EFF;
+            /* background: rgba(74, 158, 255, 0.1); */
+        }
+
+        .tab-btn.active .control-icon {
+            opacity: 1;
+        }
+        
+        .tab-content {
+            width: 100%;
+            max-height: 86vh;
+            overflow-y: auto;
+            padding: 0;
+        }
+        
+        .tab-pane {
+            display: none;
+            padding: 20px;
+        }
+        
+        .tab-pane.active {
+            display: block;
+        }
+        
+        .control-group {
+            margin-bottom: 20px;
+        }
+        
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+        
+        .control-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .control-item:last-child {
+            margin-bottom: 0;
+        }
+        .control-input-container {
+            display: flex;
+            flex: 1;
+            margin-left: 12px;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .control-label {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 11px;
+            font-weight: 500;
+            min-width: 80px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .control-input {
+            flex: 1;
+            margin-left: 12px;
+            height: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 10px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .control-value {
+            color: #fff;
+            font-size: 10px;
+            font-weight: 600;
+            min-width: 35px;
+            text-align: right;
+        }
+
+        .control-checkbox {
+            width: 20px;
+            height: 20px;
+        }
+        
+        .control-input::-webkit-slider-thumb {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #4A9EFF;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(74, 158, 255, 0.3);
+            transition: all 0.2s ease;
+        }
+        
+        .control-input::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+            box-shadow: 0 3px 8px rgba(74, 158, 255, 0.5);
+        }
+        
+        .control-input::-webkit-slider-track {
+            height: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+        }
+        
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 11px;
+        }
+        
+        .info-label {
+            color: rgba(255, 255, 255, 0.7);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .info-value {
+            color: #4A9EFF;
+            font-weight: 600;
+        }
+        
+        /* Custom scrollbar */
+        .tab-content::-webkit-scrollbar {
+            width: 4px;
+        }
+        
+        .tab-content::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        .tab-content::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+        }
+        
+        .tab-content::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .export-btn, .reset-btn  {            
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;            
+            line-height: 1;            
+            transition: all 0.3s ease-out;
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            color: #fff;      
+            border: 1px solid rgba(255,255,255,0.2);      
+        }
+        
+        .export-btn:hover, .reset-btn:hover {
+            background: rgba(255, 255, 255, 0.6);
+            border: 1px solid rgba(255,255,255,0.7);
+        }
+        
+        .reset-row {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-start;
+            align-items: flex-start;
+        }
+
+        .reset-row .control-item {
+            width: 100%;
+        }
+
+        .reset-btn {
+            height: auto;
+            margin-left: 0;
+        }
+
+        .mirror-tabs, .shape-tabs, .blend-mode-group, .uv-blend-mode-group {
+            display: flex;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 2px;
+            margin-left: 12px;
+        }
+
+        .mirror-tab, .shape-tab, .blend-btn, .uv-blend-btn {
+            flex: 1;
+            padding: 4px 8px;
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 10px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .mirror-tab:hover, .shape-tab:hover, .blend-btn:hover, .uv-blend-btn:hover {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .mirror-tab.active, .shape-tab.active, .blend-btn.active, .uv-blend-btn.active {
+            background: #4A9EFF;
+            color: #fff;
+        }
+                
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            backdrop-filter: blur(4px);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-overlay[style*="flex"] {
+            opacity: 1;
+        }
+
+        .modal-content {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(20, 20, 25, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            min-width: 320px;
+            max-width: 500px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            color: #fff;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            /* transform: scale(0.9);         */
+            display: none;
+            opacity: 0;
+            background: rgba(15, 15, 15, 0.2);
+            mix-blend-mode: luminosity;
+            backdrop-filter: blur(20px);
+            transition: all 0.3s ease-out;
+        }
+
+        /* .modal-overlay[style*="flex"] .modal-content {
+            transform: scale(1);
+        } */
+
+        .modal-header {
+            padding: 20px 20px 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 15px;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+
+        .modal-close:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .modal-body {
+            padding: 20px;
+            text-align: center;
+        }
+
+        .modal-footer {
+            padding: 0 20px 20px 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #000;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #222;
+        }
+
+        .btn-secondary {
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .modal-success {
+            color: #fff;
+            /* color: #4CAF50; */
+        }
+
+        .modal-error {
+            color: #fff;
+            /* color: #FF5252; */
+        }
+
+        .palette-preset-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .palette-preset-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            padding: 8px;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .palette-preset-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .palette-preset-btn:active {
+            transform: translateY(0);
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .palette-preset-btn.random {
+            background: rgba(255, 215, 0, 0.2);
+            border-color: rgba(255, 215, 0, 0.4);
+        }
+
+        .palette-preset-btn.random:hover {
+            background: rgba(255, 215, 0, 0.3);
+            border-color: rgba(255, 215, 0, 0.6);
+        }
+        .fractal-controls {
+            transition: all 0.3s ease;
+        }
+
+        .fractal-controls.hidden {
+            display: none;
+        }
+        .fog-controls {
+            transition: all 0.3s ease;
+        }
+
+        .fog-controls.hidden {
+            display: none;
+        }
+        .blend-mode-group, .uv-blend-mode-group {
+            display: flex;
+            gap: 4px;
+        }
+
+        .control-icon {
+            width: 24px;
+            height: 24px;
+            margin-left: auto;
+            margin-right: auto;
+            margin-bottom: 4px;
+            display: block;
+            opacity: 0.5;
+            transition: all 0.3s ease-out;
+        }
+        .color-picker-container {
+            display: flex;
+            justify-content: flex-end;            
+        }
+        .color-picker-container #borderColorHex {
+            width: 100px;
+        }
+
+        .modal-content {
+            transition: opacity 0.25s ease, transform 0.25s ease;
+            width: 500px;
+            max-width: 94%;            
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+        }
+        .modal-content.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .modal-content.hide {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        .modal-paragraph {
+            font-size: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .modal-error {
+            font-size: 1rem;
+        }
+        .modal-price {
+            font-size: 1.8rem;
+            line-height: 1.1;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            display: block;
+        }
+        .modal-actions {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            width: 74%;
+            margin: 0 auto;            
+        }
+        .modal-actions button {
+            width: 100%;            
+        }
+        .modal-footer button, .modal-actions button {
+            text-transform: uppercase;
+            font-weight: 700;
+            letter-spacing: 1px;
+            font-size: 1.1rem;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+        }
+        .modal-network-label {
+            background: #fff;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            color: #000;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-bottom: 0.5rem;
+            display: inline-block;
+        }
+        .modal-title {
+            font-size: 1.6rem;
+            margin-bottom: 0.5rem;            
+        }
+        /* Gallery Mode Styles */
+        .gallery-mode {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.3s ease;
+        }
+
+        .gallery-mode canvas {
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s ease;
+        }
+
+        .gallery-aspect-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .aspect-btn {
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .aspect-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+
+        .aspect-btn.active {
+            background: rgba(76, 175, 80, 0.3);
+            border-color: rgba(76, 175, 80, 0.6);
+        }
+        .control-panel.centered-panel {
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border-color: transparent;
+            box-shadow: none;
+            border-radius: inherit;
+        }
+        .control-panel.centered-panel .tab-container {
+            height: 661px;            
+        }
+        .control-panel.centered-panel .tab-content {
+            max-height: 100%;
+        }   
+        .control-panel.centered-panel .tab-nav {
+            background: transparent;
+        }
+
+        .gfx-logo {
+            max-width: 240px;
+            height: auto;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        @media screen and (max-width: 480px) {
+            .control-panel {
+                right: 10px !important;
+                top: 10px;
+            }
+            .control-icon {
+                display: none;            
+            }
+        }
+        /* .blend-btn, .uv-blend-btn {
+            padding: 4px 10px;
+            border: 1px solid #444;
+            background: #222;
+            color: #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .blend-btn.active, .uv-blend-btn.active,
+            .blend-btn:hover, .uv-blend-btn:hover {
+            background: #444;
+            color: #fff;
+        } */
+    </style>
+</head>
+<body>
+    <div id="loadingScreen">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">
+            <svg class="gfx-logo" width="720" height="200" viewBox="0 0 720 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M452.384 15.8029H522.57L574.325 74.8797L626.585 15.8029H697.528L616.739 99.1164L701.567 184.197H629.615L574.325 123.605L519.54 184.197H445.82L531.911 99.1164L452.384 15.8029Z" fill="white"/>
+                <path d="M261.859 15.8029H439.847V55.4399H313.11V87.2505H433.788L433.536 125.878H313.11V184.197H261.859V15.8029Z" fill="white"/>
+                <path d="M123.964 88.7653H241.36V93.3097C241.36 109.972 240.35 138.753 239.593 146.832C237.573 166.525 226.717 178.138 206.52 182.177C189.352 185.712 171.427 186.722 125.984 186.722C68.1692 186.722 50.2442 184.45 36.1061 174.856C26.7649 168.544 21.9681 159.203 19.9484 142.793C18.9385 135.471 18.4336 118.809 18.4336 97.3491C18.4336 51.6529 22.7255 34.9902 36.8635 25.1441C48.9819 16.5603 75.7432 13.2782 134.82 13.2782C197.431 13.2782 220.658 17.5702 231.767 30.6983C238.836 39.0297 240.855 49.3807 241.108 74.1223H189.857C189.605 64.2762 189.1 62.2565 185.818 59.9843C180.769 56.4498 168.903 55.4399 130.528 55.4399C69.9365 55.4399 69.684 55.6924 69.684 99.3688C69.684 127.897 71.1988 136.481 76.753 141.026C82.5597 145.57 82.5597 145.57 130.023 146.327C177.992 146.075 182.031 145.822 187.838 141.278C190.615 138.501 191.372 134.461 191.372 122.343H123.964V88.7653Z" fill="white"/>
+            </svg>
+        </div>
+        <div class="loading-progress" id="loadingProgress">Initializing...</div>
+        <div class="loading-tips">
+            This may take a moment on slower devices.<br/>
+            The shader is compiling on your GPU.
+        </div>
+    </div>    
+    <canvas id="canvas" style="display: none;"></canvas>
+    
+    <div class="control-panel collapsed" id="controlPanel">
+        <div class="panel-header">
+            <div class="panel-title">CONTROLS</div>
+            <button class="toggle-btn" id="toggleControls">
+                <svg id="settingsIcon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sliders-horizontal-icon lucide-sliders-horizontal">
+                    <line x1="21" x2="14" y1="4" y2="4"/>
+                    <line x1="10" x2="3" y1="4" y2="4"/>
+                    <line x1="21" x2="12" y1="12" y2="12"/>
+                    <line x1="8" x2="3" y1="12" y2="12"/>
+                    <line x1="21" x2="16" y1="20" y2="20"/>
+                    <line x1="12" x2="3" y1="20" y2="20"/>
+                    <line x1="14" x2="14" y1="2" y2="6"/>
+                    <line x1="8" x2="8" y1="10" y2="14"/>
+                    <line x1="16" x2="16" y1="18" y2="22"/>
+                </svg>
+                <svg id="minusIcon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                    <line x1="5" x2="19" y1="12" y2="12"/>
+                </svg>
+            </button>
+        </div>
+        
+        <div class="tab-container">
+            <div class="tab-nav">
+                <button class="tab-btn" data-tab="scene">
+                    <img src="/icons/icon--scene.svg" alt="Scene" class="control-icon">
+                    Scene
+                </button>
+                <button class="tab-btn" data-tab="shape">
+                    <img src="/icons/icon--shape.svg" alt="Shape" class="control-icon">
+                    Shape
+                </button>
+                <button class="tab-btn" data-tab="color">
+                    <img src="/icons/icon--color.svg" alt="Color" class="control-icon">
+                    Color
+                </button>
+                <button class="tab-btn" data-tab="motion">
+                    <img src="/icons/icon--motion.svg" alt="Motion" class="control-icon">
+                    Motion
+                </button>
+                <button class="tab-btn" data-tab="drift">
+                    <img src="/icons/icon--drift.svg" alt="Drift" class="control-icon">
+                    Drift
+                </button>
+                <button class="tab-btn" data-tab="warp">
+                    <img src="/icons/icon--warp.svg" alt="Warp" class="control-icon">
+                    Warp
+                </button>
+                <button class="tab-btn" data-tab="uvfeed">
+                    <img src="/icons/icon--uv-feedback.svg" alt="UV Feed" class="control-icon">
+                    UV Feed
+                </button>
+                <button class="tab-btn" data-tab="effects">
+                    <img src="/icons/icon--lights.svg" alt="Lights" class="control-icon">
+                    Lights
+                </button>
+                <button class="tab-btn" data-tab="fog">
+                    <img src="/icons/icon--fog.svg" alt="Fog" class="control-icon">
+                    Fog
+                </button>
+                <button class="tab-btn" data-tab="feedback">
+                    <img src="/icons/icon--feedback.svg" alt="Feed" class="control-icon">
+                    Feed
+                </button>
+                <button class="tab-btn" data-tab="post">
+                    <img src="/icons/icon--post.svg" alt="Post" class="control-icon">
+                    Post
+                </button>
+                <button class="tab-btn" data-tab="all">
+                    <img src="/icons/icon--info.svg" alt="Info" class="control-icon">
+                    Info
+                </button>
+            </div>
+            
+            <div class="tab-content">
+     
+                <!-- Shape Tab -->
+                <div class="tab-pane active" id="scene-tab">
+                    <div class="control-group">
+                        <h3>Scene</h3>            
+                        <div class="control-item">
+                            <span class="control-label">Mode</span>
+                            <div class="shape-tabs">
+                                <button class="shape-tab active" id="shapeSingle" data-shape="0">Single</button>
+                                <button class="shape-tab" id="shapeRepeat" data-shape="1">Repeat</button>
+                                <button class="shape-tab" id="shapeFractal" data-shape="2">Fractal</button>
+                            </div>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Speed</span>
+                            <input type="range" class="control-input" id="speed" min="0" max="2" step="0.01" value="0.5">
+                            <span class="control-value" id="speedValue">0.5</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Scale</span>
+                            <input type="range" class="control-input" id="distanceScale" min="0.02" max="2.0" step="0.01" value="1.0">
+                            <span class="control-value" id="distanceScaleValue">1.0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Rotation</span>
+                            <input type="range" class="control-input" id="fractalRotationSpeed" min="-0.5" max="0.5" step="0.01" value="0.0">
+                            <span class="control-value" id="fractalRotationSpeedValue">0.00</span>                            
+                        </div>                                                
+                        <div class="control-item">
+                            <span class="control-label">Detail</span>
+                            <input type="range" class="control-input" id="lodQuality" min="20" max="120" step="5" value="60">
+                            <span class="control-value" id="lodQualityValue">60</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Mirror</span>
+                            <div class="mirror-tabs">
+                                <button class="mirror-tab" id="mirrorAll" data-mirror="all">ALL</button>
+                                <button class="mirror-tab" id="mirrorX" data-mirror="x">X</button>
+                                <button class="mirror-tab" id="mirrorY" data-mirror="y">Y</button>
+                                <button class="mirror-tab" id="mirrorZ" data-mirror="z">Z</button>
+                            </div>
+                        </div> 
+                    </div> 
+                    <div class="control-group" style="margin-bottom: 0;">                        
+                        <div class="reset-row">
+                            <div class="control-item">
+                                <button class="control-input reset-btn" id="resetCamera">Reset<br/>Camera</button>
+                            </div>
+                            <div class="control-item">
+                                <button class="control-input reset-btn" id="resetScale">Reset<br/>Scale</button>
+                            </div>                            
+                            <div class="control-item">
+                                <button class="control-input reset-btn" id="resetRotation">Reset<br/>Rotation</button>
+                            </div>                                
+                        </div>
+                    </div>                                                                                                                                                         
+                </div> 
+                <div class="tab-pane" id="shape-tab">                                                                      
+                    <div class="control-group">
+                        <h3>Shape</h3>                        
+                        <div class="control-item">
+                            <span class="control-label">Type</span>
+                            <input type="range" class="control-input" id="shapeType" min="0" max="12" step="1.0" value="0">
+                            <span class="control-value" id="shapeTypeValue">0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Size</span>
+                            <input type="range" class="control-input" id="boxSize" min="0.01" max="0.5" step="0.001" value="0.1">
+                            <span class="control-value" id="boxSizeValue">0.1</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Twist</span>
+                            <input type="range" class="control-input" id="twist" min="-1" max="1" step="0.01" value="0">
+                            <span class="control-value" id="twistValue">0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Spin</span>
+                            <input type="range" class="control-input" id="spin" min="-3" max="3" step="0.01" value="0">
+                            <span class="control-value" id="spinValue">0</span>
+                        </div>                        
+                        <!-- <div class="control-item">
+                            <span class="control-label">Show Shape</span>
+                            <div>
+                                <input type="checkbox" class="control-input control-checkbox" id="fractionEnabled" value="0.0">
+                            </div>
+                        </div> -->
+                    </div>
+                    <div class="control-group" style="margin-bottom: 0;">                        
+                        <div class="reset-row">                            
+                            <div class="control-item">
+                                <button class="control-input reset-btn" id="resetSize">Reset<br/>Size</button>
+                            </div>                            
+                            <div class="control-item">
+                                <button class="control-input reset-btn" id="resetTwist">Reset<br/>Twist</button>
+                            </div>
+                            <div class="control-item">
+                                <button class="control-input reset-btn" id="resetSpin">Reset<br/>Spin</button>
+                            </div>
+                        </div>
+                    </div>                     
+                    <div class="control-group fractal-controls" id="fractalControls"> 
+                        <hr>
+                        <h3>Fractal</h3>
+
+                        <!-- Halving Base Controls -->
+                        <div class="control-item">
+                            <span class="control-label">Spread X</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="fractalHalvingXBase" min="0.1" max="10.0" step="0.1" value="2.0">
+                                <span class="control-value" id="fractalHalvingXBaseValue">2.0</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Spread Y</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="fractalHalvingYBase" min="0.1" max="10.0" step="0.1" value="2.0">
+                                <span class="control-value" id="fractalHalvingYBaseValue">2.0</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Spread Z</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="fractalHalvingZBase" min="0.1" max="10.0" step="0.1" value="0.5">
+                                <span class="control-value" id="fractalHalvingZBaseValue">0.5</span>
+                            </div>
+                        </div> 
+                        <hr>
+                        <div class="control-item">
+                            <button class="control-input reset-btn" id="resetFractalSpread">Reset<br/>Spread</button>
+                        </div>                        
+                    </div>
+                                                                 
+                    <!-- <div class="control-item">
+                        <span class="control-label">Fractal World</span>
+                        <div class="control-input-container">
+                            <input type="checkbox" class="control-input control-checkbox" id="fractalEnabled">
+                        </div>
+                    </div> -->
+                                        
+                </div>
+                <div class="tab-pane" id="motion-tab">                                        
+                   <div class="control-group">
+                        <h3>Crunch</h3>
+                        <div class="control-item">
+                            <span class="control-label">Type</span>
+                            
+                                <input type="range" class="control-input" id="crunchType" min="0" max="14" step="1" value="0">
+                                <span class="control-value" id="crunchTypeValue">0</span>
+                            
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Crunch</span>
+                            <input type="range" class="control-input" id="crunch" min="0" max="1" step="0.001" value="0">
+                            <span class="control-value" id="crunchValue">0</span>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="control-group">
+                        <h3>Displacement</h3>
+                        <div class="control-item">
+                            <span class="control-label">Disp Type</span>
+                            <input type="range" class="control-input" id="displacementType" min="0" max="7" step="1" value="0">
+                            <span class="control-value" id="displacementTypeValue">0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Strength</span>
+                            <input type="range" class="control-input" id="displacementAmp" min="0" max="0.1" step="0.001" value="0">
+                            <span class="control-value" id="displacementAmpValue">0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Frequency</span>
+                            <input type="range" class="control-input" id="displacementFreq" min="1" max="100" step="1" value="20">
+                            <span class="control-value" id="displacementFreqValue">20</span>
+                        </div>                        
+                    </div>
+                    <div class="control-group fractal-controls" id="fractalEffectControls"> 
+                        <hr>
+                        <h3>Special</h3>
+                        <div class="control-item">
+                            <span class="control-label">Effect Type</span>
+                            <input type="range" class="control-input" id="sdfEffectType" min="0" max="10" step="1" value="2">
+                            <span class="control-value" id="sdfEffectTypeValue">2</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Effect Mix</span>
+                            <input type="range" class="control-input" id="sdfEffectMix" min="0" max="1" step="0.01" value="0.0">
+                            <span class="control-value" id="sdfEffectMixValue">0.0</span>
+                        </div>
+                                                                  
+                    </div>                     
+                    <hr>
+                    <div class="reset-row">
+                        <div class="control-item">                            
+                            <button class="control-input export-btn" id="randomSdfEffect">Randomize</button>
+                        </div> 
+                        <div class="control-item">
+                            <button class="control-input reset-btn" id="resetDisplacements">Reset</button>
+                        </div>  
+                    </div>
+                </div>
+
+           <!-- Effects Tab -->
+                <div class="tab-pane" id="drift-tab">                                        
+                    <div class="control-group fractal-controls" id="fractalDriftControls">
+                        <h3>Movement</h3>                        
+                        <!-- Drift Controls -->
+                        <div class="control-item">
+                            <span class="control-label">Drift X</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="fractalDriftX" min="-0.5" max="0.5" step="0.01" value="0.0">
+                                <span class="control-value" id="fractalDriftXValue">0.00</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Drift Y</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="fractalDriftY" min="-0.5" max="0.5" step="0.01" value="0.0">
+                                <span class="control-value" id="fractalDriftYValue">0.00</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Drift Z</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="fractalDriftZ" min="-0.5" max="0.5" step="0.01" value="0.1">
+                                <span class="control-value" id="fractalDriftZValue">0.10</span>
+                            </div>
+                        </div>
+
+                        <hr>
+                        <h3>Stretch &amp; Sway</h3>                                     
+                        <div class="control-item">
+                            <span class="control-label">Halving Freq X</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="fractalHalvingFreqX" min="-10.0" max="10.0" step="0.01" value="0.0">
+                                <span class="control-value" id="fractalHalvingFreqXValue">0.0</span>
+                            </div>
+                        </div>
+                        
+
+                        <div class="control-item">
+                            <span class="control-label">Halving Freq Y</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="fractalHalvingFreqY" min="-10.0" max="10.0" step="0.01" value="0.0">
+                                <span class="control-value" id="fractalHalvingFreqYValue">0.0</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Halving Freq Z</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="fractalHalvingFreqZ" min="-10.0" max="10.0" step="0.01" value="0.0">
+                                <span class="control-value" id="fractalHalvingFreqZValue">0.0</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Halving Time X</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="fractalHalvingTimeX" min="0.0" max="1.0" step="0.01" value="0.0">
+                                <span class="control-value" id="fractalHalvingTimeXValue">0.00</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Halving Time Y</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="fractalHalvingTimeY" min="0.0" max="1.0" step="0.01" value="0.0">
+                                <span class="control-value" id="fractalHalvingTimeYValue">0.00</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Halving Time Z</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="fractalHalvingTimeZ" min="0.0" max="1.0" step="0.01" value="0.0">
+                                <span class="control-value" id="fractalHalvingTimeZValue">0.00</span>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="control-item">
+                            <button class="control-input reset-btn" id="resetFractalMotion">Reset<br/>Fractal Motion</button>
+                        </div>                    
+                    </div>
+                </div>
+                <div class="tab-pane" id="effects-tab">                                        
+                    <div class="control-group">
+                        <h3>Light Position</h3>
+                        
+                        <div class="control-item">
+                            <span class="control-label">Light X</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="lightPosX" min="0.0" max="1.0" step="0.01" value="0.5">
+                                <span class="control-value" id="lightPosXValue">0.50</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Light Y</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="lightPosY" min="0.0" max="1.0" step="0.01" value="0.6">
+                                <span class="control-value" id="lightPosYValue">0.60</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Light Z</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="lightPosZ" min="0.0" max="1.0" step="0.01" value="0.65">
+                                <span class="control-value" id="lightPosZValue">0.65</span>
+                            </div>
+                        </div>
+                    </div>    
+                    <hr>                
+                    <div class="control-group">
+                        <h3>Surface Normals</h3>
+                        
+                        <div class="control-item">
+                            <span class="control-label">Normals</span>
+                            <input type="range" class="control-input" id="surfaceNormals" min="0" max="1" step="0.1" value="1.0">
+                            <span class="control-value" id="surfaceNormalsValue">0.0</span>
+                        </div>
+                        
+                        <div class="control-item">
+                            <span class="control-label">Ambient</span>
+                            <input type="range" class="control-input" id="ambient" min="0" max="2" step="0.1" value="1.0">
+                            <span class="control-value" id="ambientValue">1.0</span>
+                        </div>
+                        
+                        <div class="control-item">
+                            <span class="control-label">Diffuse</span>
+                            <input type="range" class="control-input" id="diffuse" min="0" max="2" step="0.1" value="0.7">
+                            <span class="control-value" id="diffuseValue">0.7</span>
+                        </div>
+                        
+                        <div class="control-item">
+                            <span class="control-label">Specular</span>
+                            <input type="range" class="control-input" id="specular" min="0" max="2" step="0.1" value="0.7">
+                            <span class="control-value" id="specularValue">0.7</span>
+                        </div>
+                        
+                        <div class="control-item">
+                            <span class="control-label">Intensity</span>
+                            <input type="range" class="control-input" id="specularPower" min="1" max="128" step="1" value="32">
+                            <span class="control-value" id="specularPowerValue">32</span>
+                        </div>  
+                        
+                        <div class="control-item">
+                            <span class="control-label">Shadow</span>
+                            <input type="range" class="control-input" id="shadowStrength" min="0" max="1" step="0.1" value="0.0">
+                            <span class="control-value" id="shadowStrengthValue">0.0</span>
+                        </div>                          
+                    </div>
+                    <hr>
+                    <div class="control-group">
+                        <h3>Screen Normals</h3>
+                        <div class="control-item">
+                            <span class="control-label">Normal Str</span>
+                            <input type="range" class="control-input" id="normalStrength" min="0.0" max="50.0" step="0.05" value="0.0">
+                            <span class="control-value" id="normalStrengthValue">0.0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Blend</span>
+                            <input type="range" class="control-input" id="normalBlend" min="0.0" max="1.0" step="0.01" value="0.6">
+                            <span class="control-value" id="normalBlendValue">0.6</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Roughness</span>
+                            <input type="range" class="control-input" id="normalRoughness" min="0.01" max="1.0" step="0.01" value="0.2">
+                            <span class="control-value" id="normalRoughnessValue">0.2</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">F0</span>
+                            <input type="range" class="control-input" id="normalF0" min="0.0" max="0.2" step="0.01" value="0.16">
+                            <span class="control-value" id="normalF0Value">0.16</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Diffuse</span>
+                            <input type="range" class="control-input" id="normalDiffuseScale" min="0.0" max="1.0" step="0.01" value="0.2">
+                            <span class="control-value" id="normalDiffuseScaleValue">0.2</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Specular</span>
+                            <input type="range" class="control-input" id="normalSpecularScale" min="0.0" max="1.0" step="0.01" value="0.8">
+                            <span class="control-value" id="normalSpecularScaleValue">0.8</span>
+                        </div>
+                    </div>                       
+                </div>
+                                
+                <!-- Feedback Tab -->
+                <div class="tab-pane" id="feedback-tab">
+                    <div class="control-group">
+                        <h3>Feedback</h3>
+                        <div class="control-item">
+                            <span class="control-label">Opacity</span>
+                            <input type="range" class="control-input" id="feedbackOpacity" min="0" max="1.0" step="0.001" value="0.0">
+                            <span class="control-value" id="feedbackOpacityValue">0.0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Blur</span>
+                            <input type="range" class="control-input" id="feedbackBlur" min="0.0" max="5.0" step="0.1" value="0.0">
+                            <span class="control-value" id="feedbackBlurValue">0.0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Distort</span>
+                            <input type="range" class="control-input" id="feedbackDistort" min="0.0" max="0.5" step="0.001" value="0.025">
+                            <span class="control-value" id="feedbackDistortValue">0.025</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Seed</span>
+                            <input type="range" class="control-input" id="feedbackSeed" min="0" max="100" step="0.1" value="0.0">
+                            <span class="control-value" id="feedbackSeedValue">0.0</span>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Layers</span>
+                            <input type="range" class="control-input" id="feedbackLayers" min="1" max="4" step="1" value="1">
+                            <span class="control-value" id="feedbackLayersValue">1</span>
+                        </div>                         
+                        <div class="control-item">
+                            <span class="control-label">Period</span>
+                            <input type="range" class="control-input" id="feedbackNoiseScale" min="0.1" max="5.0" step="0.01" value="1.0">
+                            <span class="control-value" id="feedbackNoiseScaleValue">1.0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Harmonics</span>
+                            <input type="range" class="control-input" id="feedbackOctaves" min="1" max="8" step="1" value="4">
+                            <span class="control-value" id="feedbackOctavesValue">4</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Lacunarity</span>
+                            <input type="range" class="control-input" id="feedbackLacunarity" min="1.5" max="3.0" step="0.1" value="2.0">
+                            <span class="control-value" id="feedbackLacunarityValue">2.0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Gain</span>
+                            <input type="range" class="control-input" id="feedbackPersistence" min="0.1" max="0.8" step="0.05" value="0.5">
+                            <span class="control-value" id="feedbackPersistenceValue">0.5</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Noise Mix</span>
+                            <input type="range" class="control-input" id="feedbackNoiseMix" min="0.0" max="1.0" step="0.01" value="0.8">
+                            <span class="control-value" id="feedbackNoiseMixValue">0.8</span>
+                        </div>
+                        <!-- <div class="control-item">
+                            <span class="control-label">Gamma</span>
+                            <input type="range" class="control-input" id="feedbackGamma" min="0.0" max="0.005" step="0.001" value="0.0">
+                        </div> -->
+                        <div class="control-item">
+                            <span class="control-label">Quantize</span>
+                            <input type="range" class="control-input" id="pixelSize" min="0.0" max="1.0" step="0.01" value="0.0">
+                            <span class="control-value" id="pixelSizeValue">0.0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Blend Mode</span>
+                            <div class="blend-mode-group">
+                                <button class="blend-btn active" data-blend="0">Mix</button>
+                                <button class="blend-btn" data-blend="1">Lighten</button>
+                                <button class="blend-btn" data-blend="2">Darken</button>
+                            </div>
+                        </div>                       
+                    </div>                                                                                    
+                </div>
+                <div class="tab-pane" id="post-tab">
+                    <div class="control-group">
+                        <h3>Bloom</h3>
+                        <div class="control-item">
+                            <span class="control-label">Strength</span>
+                            <input type="range" class="control-input" id="bloomStrength" min="0.0" max="3.0" step="0.01" value="0.0">
+                            <span class="control-value" id="bloomStrengthValue">0.0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Radius</span>
+                            <input type="range" class="control-input" id="bloomRadius" min="0.0" max="1.0" step="0.01" value="0.4">
+                            <span class="control-value" id="bloomRadiusValue">0.4</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Threshold</span>
+                            <input type="range" class="control-input" id="bloomThreshold" min="0.0" max="1.0" step="0.01" value="0.85">
+                            <span class="control-value" id="bloomThresholdValue">0.85</span>
+                        </div>
+                    </div>   
+                    <hr> 
+                    <div class="control-group">
+                        <h3>Color Grading</h3>
+                        <div class="control-item">
+                            <span class="control-label">Contrast</span>
+                            <input type="range" class="control-input" id="colorContrast" min="0.5" max="2.0" step="0.05" value="1.0">
+                            <span class="control-value" id="colorContrastValue">1.0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Saturation</span>
+                            <input type="range" class="control-input" id="colorSaturation" min="0.0" max="2.0" step="0.05" value="1.0">
+                            <span class="control-value" id="colorSaturationValue">1.0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Brightness</span>
+                            <input type="range" class="control-input" id="colorBrightness" min="-0.3" max="0.3" step="0.01" value="0.0">
+                            <span class="control-value" id="colorBrightnessValue">0.0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Gamma</span>
+                            <input type="range" class="control-input" id="colorGamma" min="0.5" max="1.5" step="0.05" value="1.0">
+                            <span class="control-value" id="colorGammaValue">1.0</span>
+                        </div>
+                    </div>   
+                    <hr>
+                    <div class="control-group">
+                        <h3>Edge Detection</h3>
+                        
+                        <div class="control-item">
+                            <span class="control-label">Sharpen</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="edgeSharpen" min="0" max="1" step="0.01" value="0">
+                                <span class="control-value" id="edgeSharpenValue">0.00</span>
+                            </div>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Strength</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="edgeStrength" min="0" max="1" step="0.01" value="0">
+                                <span class="control-value" id="edgeStrengthValue">0.00</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Threshold</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="edgeThreshold" min="0" max="5" step="0.01" value="0.1">
+                                <span class="control-value" id="edgeThresholdValue">0.10</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Color R</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="edgeColorR" min="0" max="1" step="0.01" value="1.0">
+                                <span class="control-value" id="edgeColorRValue">1.00</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Color G</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="edgeColorG" min="0" max="1" step="0.01" value="1.0">
+                                <span class="control-value" id="edgeColorGValue">1.00</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Color B</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="edgeColorB" min="0" max="1" step="0.01" value="1.0">
+                                <span class="control-value" id="edgeColorBValue">1.00</span>
+                            </div>
+                        </div>
+                    </div>  
+                    <hr>
+                    <h3>Solarize</h3>
+                    <div class="control-group">
+                        <div class="control-item">
+                            <span class="control-label">Solarize Mix</span>
+                            <div class="control-input-container">
+                                <input type="range" id="colorSolarizeMix" class="control-input" min="0.0" max="1.0" step="0.01" value="0.0">
+                                <span class="control-value" id="colorSolarizeMixValue">0.0</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Light Threshold</span>
+                            <div class="control-input-container">
+                                <input type="range" id="colorSolarizeLightThresh" class="control-input" min="0.0" max="1.0" step="0.01" value="0.7">
+                                <span class="control-value" id="colorSolarizeLightThreshValue">0.7</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Light Softness</span>
+                            <div class="control-input-container">
+                                <input type="range" id="colorSolarizeLightSoft" class="control-input" min="0.0" max="0.5" step="0.01" value="0.3">
+                                <span class="control-value" id="colorSolarizeLightSoftValue">0.3</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Dark Threshold</span>
+                            <div class="control-input-container">
+                                <input type="range" id="colorSolarizeDarkThresh" class="control-input" min="0.0" max="1.0" step="0.01" value="0.3">
+                                <span class="control-value" id="colorSolarizeDarkThreshValue">0.3</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Dark Softness</span>
+                            <div class="control-input-container">
+                                <input type="range" id="colorSolarizeDarkSoft" class="control-input" min="0.0" max="0.5" step="0.01" value="0.3">
+                                <span class="control-value" id="colorSolarizeDarkSoftValue">0.3</span>
+                            </div>
+                        </div>
+
+                    </div>
+                    <hr>                     
+                    <div class="control-group">
+                        <h3>Border</h3>
+                        
+                        <div class="control-item">
+                            <span class="control-label">Border Thickness</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="colorBorderThickness" min="0.0" max="0.1" step="0.01" value="0.00">
+                                <span class="control-value" id="colorBorderThicknessValue">0.00</span>
+                            </div>
+                        </div>
+                    
+                        <div class="control-item">
+                            <span class="control-label">Border Color</span>
+                            <div class="control-input-container color-picker-container">
+                                <input type="color" id="borderColorPicker" value="#00FF00">
+                                <input type="text" id="borderColorHex" placeholder="#00FF00" value="#00FF00" pattern="^#[0-9A-Fa-f]{6}$">
+                            </div>
+                        </div>
+                    </div>                        
+                </div>
+                
+                <!-- Color Tab -->
+                <div class="tab-pane" id="color-tab">
+                    <div class="control-group">
+                        <h3>Color</h3>
+                        <div class="control-item">
+                            <span class="control-label">Color Type</span>
+                            <input type="range" class="control-input" id="colorType" min="0.0" max="14.0" step="1.0" value="0.0">
+                            <span class="control-value" id="colorTypeValue">0.0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Period</span>
+                            <input type="range" class="control-input" id="colorIntensity" min="0.0" max="0.1" step="0.001" value="0.005">
+                            <span class="control-value" id="colorIntensityValue">0.005</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Background</span>
+                            <input type="range" class="control-input" id="backgroundBrightness" min="0" max="2" step="0.01" value="1.0">
+                            <span class="control-value" id="backgroundBrightnessValue">1.0</span>
+                            <!-- <span class="control-value" id="backgroundBrightnessValue">0.50</span> -->
+                        </div>                          
+                        <div class="control-item">
+                            <button class="control-input reset-btn" id="resetColorPeriod">Reset Color Period</button>
+                        </div>                     
+                    </div> 
+                    <hr>
+                    <div class="control-item">
+                        <span class="control-label">Palette Presets</span>
+                        <div class="palette-preset-grid">
+                            <button class="palette-preset-btn" data-palette="0" title="Blue Rainbow">🌊</button>
+                            <button class="palette-preset-btn" data-palette="1" title="Cool Tones">❄️</button>
+                            <button class="palette-preset-btn" data-palette="2" title="Warm Earth">🌍</button>
+                            <button class="palette-preset-btn" data-palette="3" title="Golden Hour">🌅</button>
+                            <button class="palette-preset-btn" data-palette="4" title="Sunset">🌇</button>
+                            <button class="palette-preset-btn" data-palette="5" title="Fire">🔥</button>
+                            <button class="palette-preset-btn" data-palette="6" title="Forest">🌲</button>
+                            <button class="palette-preset-btn random" title="Random Colors">🎲</button>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="control-group">
+                        <h3>Brightness</h3>
+                        <div class="control-item">
+                            <span class="control-label">Red</span>
+                            <input type="range" class="control-input" id="a_r" min="0" max="1" step="0.01" value="0.5">
+                            <span class="control-value" id="a_rValue">0.5</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Green</span>
+                            <input type="range" class="control-input" id="a_g" min="0" max="1" step="0.01" value="0.5">
+                            <span class="control-value" id="a_gValue">0.5</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Blue</span>
+                            <input type="range" class="control-input" id="a_b" min="0" max="1" step="0.01" value="0.5">
+                            <span class="control-value" id="a_bValue">0.5</span>
+                        </div>
+                        <hr> 
+                        <h3>Contrast</h3>                        
+                        <div class="control-item">
+                            <span class="control-label">Red</span>
+                            <input type="range" class="control-input" id="b_r" min="0" max="1" step="0.01" value="0.5">
+                            <span class="control-value" id="b_rValue">0.5</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Green</span>
+                            <input type="range" class="control-input" id="b_g" min="0" max="1" step="0.01" value="0.5">
+                            <span class="control-value" id="b_gValue">0.5</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Blue</span>
+                            <input type="range" class="control-input" id="b_b" min="0" max="1" step="0.01" value="0.5">
+                            <span class="control-value" id="b_bValue">0.5</span>
+                        </div>
+                        <hr> 
+                        <h3>Range</h3>
+                        <div class="control-item">
+                            <span class="control-label">Red</span>
+                            <input type="range" class="control-input" id="c_r" min="0" max="2" step="0.01" value="1.0">
+                            <span class="control-value" id="c_rValue">1.0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Green</span>
+                            <input type="range" class="control-input" id="c_g" min="0" max="2" step="0.01" value="1.0">
+                            <span class="control-value" id="c_gValue">1.0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Blue</span>
+                            <input type="range" class="control-input" id="c_b" min="0" max="2" step="0.01" value="1.0">
+                            <span class="control-value" id="c_bValue">1.0</span>
+                        </div>
+                        <hr> 
+                        <h3>Location</h3>
+                        <div class="control-item">
+                            <span class="control-label">Red</span>
+                            <input type="range" class="control-input" id="d_r" min="0" max="1" step="0.01" value="0.263">
+                            <span class="control-value" id="d_rValue">0.263</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Green</span>
+                            <input type="range" class="control-input" id="d_g" min="0" max="1" step="0.01" value="0.416">
+                            <span class="control-value" id="d_gValue">0.416</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Blue</span>
+                            <input type="range" class="control-input" id="d_b" min="0" max="1" step="0.01" value="0.557">
+                            <span class="control-value" id="d_bValue">0.557</span>
+                        </div>                                                                                                 
+                    </div>                                                      
+                </div>
+
+                <div class="tab-pane" id="warp-tab">                    
+                    <div class="control-group">
+                        <h3>UV Warp</h3>
+                        
+                        <div class="control-item">
+                            <span class="control-label">UV Scale</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="uvScale" min="0.1" max="5.0" step="0.1" value="1.0">
+                                <span class="control-value" id="uvScaleValue">1.0</span>
+                            </div>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">UV Rotate</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="uvRotate" min="-1.0" max="1.0" step="0.01" value="0.0">
+                                <span class="control-value" id="uvRotateValue">0.00</span>
+                            </div>
+                        </div>                        
+                        <div class="control-item">
+                            <span class="control-label">Layers</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="warpLayers" min="1" max="5" step="1" value="1">
+                                <span class="control-value" id="warpLayersValue">1</span>
+                            </div>
+                        </div>                        
+                        <div class="control-item">
+                            <span class="control-label">Harmonics</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="warpHarmonics" min="1" max="8" step="1" value="3">
+                                <span class="control-value" id="warpHarmonicsValue">3</span>
+                            </div>
+                        </div>                        
+                        <div class="control-item">
+                            <span class="control-label">Lacunarity</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="warpLacunarity" min="1.0" max="4.0" step="0.1" value="2.0">
+                                <span class="control-value" id="warpLacunarityValue">2.0</span>
+                            </div>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Gain</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="warpGain" min="0.0" max="1.0" step="0.01" value="0.5">
+                                <span class="control-value" id="warpGainValue">0.50</span>
+                            </div>
+                        </div>                        
+                        <div class="control-item">
+                            <span class="control-label">Amplitude</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="warpAmplitude" min="0.0" max="1.0" step="0.01" value="0.0">
+                                <span class="control-value" id="warpAmplitudeValue">0.0</span>
+                            </div>
+                        </div>
+                    </div>  
+                    <hr>
+
+                    <div class="control-group">    
+                        <h3>UV Sin Distort</h3>                   
+                        <div class="control-item">
+                            <span class="control-label">Distort X</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="uvDistortX" min="0.0" max="2.0" step="0.01" value="0.0">
+                                <span class="control-value" id="uvDistortXValue">0.00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item">
+                            <span class="control-label">Distort Y</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="uvDistortY" min="0.0" max="2.0" step="0.01" value="0.0">
+                                <span class="control-value" id="uvDistortYValue">0.00</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Bloat</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="bloatStrength" min="-2.0" max="2.0" step="0.01" value="0.0">
+                                <span class="control-value" id="bloatStrengthValue">0.00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item">
+                            <span class="control-label">Distort</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="lensDistort" min="-1.0" max="1.0" step="0.01" value="0.0">
+                                <span class="control-value" id="lensDistortValue">0.00</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Polarize</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="polarize" min="0.0" max="1.0" step="0.01" value="0.0">
+                                <span class="control-value" id="polarizeValue">0.00</span>
+                            </div>
+                        </div>                        
+                    </div>
+                    <hr>
+                    <div class="control-group">     
+                        <h3>UV Pattern Displace</h3>                   
+                        <div class="control-item">
+                            <span class="control-label">Type</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="patternType" min="0" max="3" step="1" value="0">
+                                <span class="control-value" id="patternTypeValue">0</span>
+                            </div>
+                        </div>                        
+                        <div class="control-item">
+                            <span class="control-label">Size</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="uvGridSizeZ" min="0.0" max="1.0" step=".01" value="0.0">
+                                <span class="control-value" id="uvGridSizeZValue">0.0</span>
+                            </div>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Pattern X</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="uvGridSizeX" min="1.0" max="50.0" step="1.0" value="10.0">
+                                <span class="control-value" id="uvGridSizeXValue">10</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Pattern Y</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="uvGridSizeY" min="1.0" max="50.0" step="1.0" value="20.0">
+                                <span class="control-value" id="uvGridSizeYValue">20</span>
+                            </div>
+                        </div>                
+                    </div>
+                    <hr>  
+                    <div class="control-item">
+                        <button class="control-input reset-btn" id="resetWarps">Reset All Warps</button>
+                    </div>                                    
+                </div>
+
+                <div class="tab-pane" id="uvfeed-tab">
+                    <div class="control-group">
+                        <h3>UV Feedback</h3>
+                        <div class="control-item"><span class="control-label">Opacity</span>
+                            <input type="range" class="control-input" id="uvFeedbackOpacity" min="0" max="1" step="0.01" value="0.0">
+                            <span class="control-value" id="uvFeedbackOpacityValue">0.0</span>
+                        </div>
+                        <div class="control-item"><span class="control-label">Blur</span>
+                            <input type="range" class="control-input" id="uvFeedbackBlur" min="0" max="5" step="0.1" value="0.0">
+                            <span class="control-value" id="uvFeedbackBlurValue">0.0</span>
+                        </div>
+                        <div class="control-item"><span class="control-label">Distort</span>
+                            <input type="range" class="control-input" id="uvFeedbackDistort" min="0" max="0.5" step="0.01" value="0.025">
+                            <span class="control-value" id="uvFeedbackDistortValue">0.025</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Seed</span>
+                            <input type="range" class="control-input" id="uvFeedbackSeed" min="0" max="100" step="0.1" value="0.0">
+                            <span class="control-value" id="uvFeedbackSeedValue">0.0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Layers</span>
+                            <input type="range" class="control-input" id="uvFeedbackLayers" min="1" max="5" step="1" value="1">
+                            <span class="control-value" id="uvFeedbackLayersValue">1</span>
+                        </div>                        
+                        <div class="control-item"><span class="control-label">Period</span>
+                            <input type="range" class="control-input" id="uvFeedbackNoiseScale" min="0.1" max="6" step="0.01" value="1.0">
+                            <span class="control-value" id="uvFeedbackNoiseScaleValue">1.0</span>
+                        </div>
+                        <div class="control-item"><span class="control-label">Octaves</span>
+                            <input type="range" class="control-input" id="uvFeedbackOctaves" min="1" max="8" step="1" value="4">
+                            <span class="control-value" id="uvFeedbackOctavesValue">4</span>
+                        </div>
+                        <div class="control-item"><span class="control-label">Lacunarity</span>
+                            <input type="range" class="control-input" id="uvFeedbackLacunarity" min="1.5" max="3.0" step="0.1" value="2.0">
+                            <span class="control-value" id="uvFeedbackLacunarityValue">2.0</span>
+                        </div>
+                        <div class="control-item"><span class="control-label">Gain</span>
+                            <input type="range" class="control-input" id="uvFeedbackPersistence" min="0.1" max="0.8" step="0.05" value="0.5">
+                            <span class="control-value" id="uvFeedbackPersistenceValue">0.5</span>
+                        </div>
+                        <div class="control-item"><span class="control-label">Noise Mix</span>
+                            <input type="range" class="control-input" id="uvFeedbackNoiseMix" min="0" max="1" step="0.01" value="0.98">
+                            <span class="control-value" id="uvFeedbackNoiseMixValue">0.98</span>
+                        </div>
+                        <div class="control-item"><span class="control-label">Pixel Size</span>
+                            <input type="range" class="control-input" id="uvPixelSize" min="0.0" max="1.0" step="0.01" value="0.0">
+                            <span class="control-value" id="uvPixelSizeValue">0.0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">UV Blend Mode</span>
+                            <div class="uv-blend-mode-group">
+                                <button class="uv-blend-btn active" data-uv-blend="0">Mix</button>
+                                <button class="uv-blend-btn" data-uv-blend="1">Lighten</button>
+                                <button class="uv-blend-btn" data-uv-blend="2">Darken</button>
+                            </div>
+                        </div>
+                    </div>    
+                </div>
+
+                <div class="tab-pane" id="fog-tab">
+                    <h3>Fog & Turbulence</h3>
+                    
+                    <div class="control-item">
+                        <span class="control-label">Fog Mode</span>
+                        <div class="mirror-tabs">
+                            <button class="mirror-tab active" id="fogNone" data-fog="0">Off</button>
+                            <button class="mirror-tab" id="fogWith" data-fog="1">Combined</button>
+                            <button class="mirror-tab" id="fogOnly" data-fog="2">Fog Only</button>
+                        </div>
+                    </div>
+                    
+                    <div class="control-group fog-controls" id="fogControls">
+                        <div class="control-item">
+                            <span class="control-label">Fog Scale</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="fogScale" min="0.1" max="1.0" step="0.001" value="0.5">
+                                <span class="control-value" id="fogScaleValue">0.5</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Turbulence Octaves</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="turbNum" min="1" max="20" step="1" value="12">
+                                <span class="control-value" id="turbNumValue">12</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Turbulence Amplitude</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="turbAmp" min="0.0" max="2.0" step="0.1" value="1.1">
+                                <span class="control-value" id="turbAmpValue">1.1</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Turbulence Speed</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="turbSpeed" min="0.0" max="2.0" step="0.1" value="0.3">
+                                <span class="control-value" id="turbSpeedValue">0.3</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Turbulence Frequency</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="turbFreq" min="0.5" max="3.5" step="0.1" value="2.1">
+                                <span class="control-value" id="turbFreqValue">2.1</span>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Turbulence Multiplier</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="turbExp" min="0.1" max="2.0" step="0.1" value="1.4">
+                                <span class="control-value" id="turbExpValue">1.4</span>
+                            </div>
+                        </div>  
+                    </div> 
+                </div>
+                
+                <!-- All Tab -->
+                <div class="tab-pane" id="all-tab">                                       
+                    <div class="control-group">
+                        <h3>Performance</h3>
+                        <div class="control-item">
+                            <span class="control-label">Resolution</span>
+                            <input type="range" class="control-input" id="resolutionScale" min="0.1" max="2.0" step="0.1" value="0.7">
+                            <span class="control-value" id="resolutionScaleValue">0.7</span>
+                        </div>                        
+                    </div>
+                    <hr>                     
+                    <div class="control-group">
+                        <h3>Export</h3>
+                        <div class="control-item">
+                            <span class="control-label">Image</span>
+                            <button class="control-input export-btn" id="exportScreenshot">Save JPG</button>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Video</span>
+                            <button class="control-input export-btn" id="toggleRecording">● Record</button>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Attributes</span>
+                            <button class="control-input export-btn" id="exportPreset">Save JSON</button>
+                        </div>
+                        <!-- <div class="control-item">
+                            <span class="control-label">Share</span>
+                            <button class="control-input export-btn" id="shareURL">Copy URL</button>
+                        </div> -->
+                        <div class="control-item">
+                            <span class="control-label">Gallery</span>
+                            <button class="control-input export-btn" id="saveToServer">Save to Gallery</button>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Import</span>
+                            <input type="file" class="control-input" id="importPreset" accept=".json" style="color: rgba(255, 255, 255, 0.7); font-size: 10px;">
+                        </div>
+                    </div>
+                    <hr>                          
+                    <div class="control-group">
+                        <h3>Gallery Mode</h3>
+                        
+                        <div class="control-item">
+                            <span class="control-label">Aspect Ratio</span>
+                            <div class="gallery-aspect-buttons">
+                                <button class="aspect-btn" data-aspect="fullscreen">Full</button>
+                                <button class="aspect-btn" data-aspect="1:1">1:1</button>
+                                <button class="aspect-btn" data-aspect="16:9">16:9</button>
+                                <button class="aspect-btn" data-aspect="9:16">9:16</button>
+                                <button class="aspect-btn" data-aspect="21:9">21:9</button>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Background Color</span>
+                            <div class="color-picker-container">
+                                <input type="color" id="galleryBgPicker" value="#000000">
+                                <input type="text" id="galleryBgHex" placeholder="#000000" value="#000000" pattern="^#[0-9A-Fa-f]{6}$">
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <span class="control-label">Canvas Scale</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="galleryScale" min="0.2" max="1.0" step="0.05" value="0.5">
+                                <span class="control-value" id="galleryScaleValue">0.50</span>
+                            </div>
+                        </div>
+                    </div>                                   
+                    <hr>                     
+                    <div class="control-group">
+                        <!-- <div class="info-item">
+                            <span class="info-label">Time</span>
+                            <span class="info-value" id="time">0.0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Mouse</span>
+                            <span class="info-value" id="mouse">0.0, 0.0</span>
+                        </div> -->
+                        <div class="info-item">
+                            <span class="info-label">FPS</span>
+                            <span class="info-value" id="fps">0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Window Size</span>
+                            <span class="info-value" id="windowSize">0x0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">CSS Size</span>
+                            <span class="info-value" id="cssSize">0x0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Physical Size</span>
+                            <span class="info-value" id="physicalSize">0x0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Render Size</span>
+                            <span class="info-value" id="renderDims">0x0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Pixel Ratio</span>
+                            <span class="info-value" id="pixelRatio">1.0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Delta Time</span>
+                            <span class="info-value" id="deltaTime">0.0ms</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">GPU Memory</span>
+                            <span class="info-value" id="gpuMemory">0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">GPU Programs</span>
+                            <span class="info-value" id="gpuPrograms">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="modalContent" class="modal-content">
+        <div class="modal-header">
+            <h3 id="modalTitle">Save Complete</h3>
+            <button class="modal-close" id="modalClose">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="modalMessage">Successfully saved to gallery.</div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" id="modalOkButton">OK</button>
+        </div>
+    </div>
+    <!-- <div id="saveModal" class="modal-overlay" style="display: none;">
+    </div> -->
+    
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>
