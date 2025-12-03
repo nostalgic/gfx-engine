@@ -62,6 +62,7 @@ export const COMMON_UNIFORMS = `
     uniform float u_turb_speed;
     uniform float u_turb_freq;
     uniform float u_turb_exp;
+    uniform float u_turb_time;
 
     // Fractal
     uniform int u_shape_mode; 
@@ -548,6 +549,7 @@ export const DOMAIN_FX = `
     }
 
     vec3 fractalWorld(vec3 p){
+        // if (u_shape_mode != 2) return p; 
         p -= vec3(u_fractal_drift_offset_x, u_fractal_drift_offset_y, u_fractal_drift_offset_z);
         float halving = u_fractal_halving_x_base;
         float Yhalving = u_fractal_halving_y_base;
@@ -585,14 +587,14 @@ export const FOG_FX = `
         for(float i = 0.0; i < u_turb_num; i++) {
             // Scroll along the rotated y coordinate
             vec2 rotatedPos = pos.zy * rot;
-            float phase = freq * rotatedPos.y + u_turb_speed * u_time + i;
+            float phase = freq * rotatedPos.y + u_turb_time + i;
             
             // Add a perpendicular sine wave offset
             vec2 offset = amp * rot[int(i)] * sin(phase * scale)/ freq;
             pos.xy += offset;
             
             // Add z turbulence based on xy position
-            pos.z += amp * sin(freq * pos.x + u_turb_speed * u_time * 0.7 + i * scale) / freq;
+            pos.z += amp * sin(freq * pos.x + u_turb_time * 0.7 + i * scale) / freq;
             
             // Rotate for the next octave
             rot *= mat2(0.6, -0.8, 0.8, 0.6);
@@ -848,7 +850,86 @@ export const COLOR_LIB = {
     // 14: Raw distance field
     rawDistance: `vec3 applyColorMode(float t, float d, int i, vec3 p, inout Color accum) {
         return vec3(d);
+    }`,
+    
+    // 15: Glass material with spectral accumulation (inspired by cloud/torus shader)
+    glassMaterial: `vec3 applyColorMode(float t, float d, int i, vec3 p, inout Color accum) {
+        // Spectral color accumulation with intensity-based frequency shift
+        // Use smooth t-based modulation instead of discrete iteration counter
+        // float smoothFreq = t * (u_color_intensity * 100.0); // Continuous frequency based on ray distance
+        float smoothFreq = float(i) * 0.5 * (u_color_intensity * 10.0);
+        // float smoothFreq = d * 0.5 * (u_color_intensity * 10.0);
+        vec3 spectralColor = max(
+            sin(vec3(1.0, 2.0, 3.0) + smoothFreq) * 1.3 / max(d, 0.001),
+            // sin(vec3(1.0, 2.0, 3.0) + float(i) * 0.5) * 1.3 / max(d, 0.001),
+            length(p * p)
+        );
+        
+        // Glass-like intensity with palette modulation
+        vec3 paletteColor = palette(t * (u_color_intensity * 10.0) + u_time * 0.025) * 2.0;
+        
+        // Accumulate with quadratic intensity (glass refraction-like behavior)
+        vec3 glassEffect = spectralColor * paletteColor;
+        accum.value += glassEffect;
+        
+        // Apply glass tone mapping: tanh(color^2 / scale) for soft saturation
+        vec3 toneMap = tanh(accum.value * accum.value / 1e6);
+        
+        // Vertical gradient background matching color palette
+        float shapeFactor = smoothstep(.5, 0.0, d);
+        vec3 bgGradient = palette((u_time * .025) + t * 0.05 + t * u_color_intensity * 0.1);
+        float brightnessLevel = mix(1., 0., u_background_brightness);
+        float brightnessMix = mix(0., brightnessLevel, 1.-shapeFactor);
+        vec3 background = bgGradient - (vec3(brightnessMix) * 2.);
+        // vec3 background = bgGradient;
+        
+        // Mix glass effect with gradient background
+        float glassMix = mix(0.5, 1.0, u_background_brightness);
+        return mix(background, toneMap, shapeFactor) * glassMix;
     }`
+    // glassMaterial: `vec3 applyColorMode(float t, float d, int i, vec3 p, inout Color accum) {
+    //     // Smooth distance-based frequency (no banding)
+    //     float smoothFreq = d * (u_color_intensity * 20.0);
+        
+    //     // Spectral color with smooth distance falloff
+    //     vec3 spectralColor = max(
+    //         sin(vec3(1.0, 2.0, 3.0) + smoothFreq) * 1.3 / max(d, 0.001),
+    //         -length(p * p)
+    //     );
+        
+    //     // Add position-based chromatic aberration that blends with distance
+    //     float posFreq = (p.x * 5.0 + p.y * 3.0 + p.z * 2.0);
+    //     vec3 chromaticShift = sin(vec3(1.0, 2.0, 3.0) + posFreq) * 0.3;
+        
+    //     // Blend chromatic shift based on distance (more at surface)
+    //     float surfaceBlend = smoothstep(0.1, 0.0, d);
+    //     spectralColor = mix(spectralColor, spectralColor + chromaticShift, surfaceBlend);
+        
+    //     // Glass-like intensity with palette modulation
+    //     vec3 paletteColor = palette(t * (u_color_intensity * 10.0) + u_time * 0.025);
+        
+    //     // Fresnel-like effect using distance (closer = more reflective)
+    //     float fresnel = pow(1.0 - clamp(d * 2.0, 0.0, 1.0), 3.0);
+    //     vec3 reflectionTint = vec3(1.2, 1.15, 1.1); // Slight warm reflection
+        
+    //     // Accumulate with quadratic intensity (glass refraction-like behavior)
+    //     vec3 glassEffect = spectralColor * paletteColor * (1.0 + fresnel * reflectionTint);
+    //     accum.value += glassEffect;
+        
+    //     // Apply glass tone mapping: tanh(color^2 / scale) for soft saturation
+    //     vec3 toneMap = tanh(accum.value * accum.value / 1e6);
+        
+    //     // Vertical gradient background matching color palette
+    //     float shapeFactor = smoothstep(0.5, 0.0, d);
+    //     vec3 bgGradient = palette((u_time * .025) + t * 0.05 + t * u_color_intensity * 0.1);
+    //     float brightnessLevel = mix(1., 0., u_background_brightness);
+    //     float brightnessMix = mix(0., brightnessLevel, 1.0 - shapeFactor);
+    //     vec3 background = bgGradient - (vec3(brightnessMix) * 2.);
+        
+    //     // Mix glass effect with gradient background, weighted by distance
+    //     float glassMix = mix(0.5, 1.0, u_background_brightness) * (1.0 + fresnel * 0.5);
+    //     return mix(background, toneMap, shapeFactor) * glassMix;
+    // }`
 };
 
 export const LIGHTING_FX = `

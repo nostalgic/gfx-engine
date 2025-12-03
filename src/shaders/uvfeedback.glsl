@@ -334,7 +334,9 @@ void bloatDistort(inout vec2 uv) {
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {    
     vec2 uv = (fragCoord * 2. - u_resolution.xy) / u_resolution.y;    
+    // uv = -abs(fract(uv / 1.) * 2.0 - 1.0);
     uv.xy *= rotate(u_uv_rotate * TWO_PI);
+    // uv = abs(uv);
     precamWarp(uv);
     warp(uv); 
 
@@ -362,6 +364,13 @@ void main(){
     vec4 fragColor;
 
     mainImage(fragColor, fragCoord);
-
+    // fragColor.xy is already in -1 to 1 range, just scale to -0.1 to 0.1
+    // fragColor.xy = fragColor.xy * 5.;
+    // fragColor.xy = (mod(fragColor.xy + 1.0, 2.0) - 1.0) * 0.2; // wrap UVs from -1 to 1 range and scale to -0.2 to 0.2 --- IGNORE ---
+    // fragColor = abs(fract(fragColor / .5) * 2.0 - 1.0);
+    // fragColor = (clamp(fragColor, 0.3, 0.5) - 0.3) / 0.2;
+    // fragColor = (clamp(fragColor, 0.45, 0.5) - 0.45) / 0.05;
+    // fragColor = mod(fragColor, 0.5) / 0.5;
+     
     FragColor = fragColor;
 }

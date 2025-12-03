@@ -91,7 +91,8 @@ export class ShaderAssembler {
             'posterized',         // 11
             'smoothSurface',      // 12
             'bandedRings',        // 13
-            'rawDistance'         // 14
+            'rawDistance',        // 14
+            'glassMaterial'       // 15
         ];
         return keys[id] || 'paletteShape';
     }
@@ -124,7 +125,8 @@ export class ShaderAssembler {
         float map(vec3 p, int i, float t) {
             // 1. Domain Warping
             p = worldEffects(p, t);
-            
+            vec3 ogP = p;
+
             if (u_shape_mode == 2) { 
                 p = u_sdf_effect_mix > 0.01 ? sceneWarp(p) : p;
                 p = fractalWorld(p); 
@@ -149,8 +151,8 @@ export class ShaderAssembler {
             ${displacementLogic}
             
             // 4. Global Fog Integration
-            if (u_fog_enabled == 2.0) return fog(p, t);
-            if (u_fog_enabled == 1.0) return min(fog(p, t), d);
+            if (u_fog_enabled == 2.0) return fog(ogP, t);
+            if (u_fog_enabled == 1.0) return min(fog(ogP, t), d);
             
             return d;
         }`;
@@ -259,6 +261,10 @@ export class ShaderAssembler {
                 vec4 fragColor;
                 mainImage(fragColor, fragCoord);    
                 fragColor = (u_feedback_opacity > 0.0) ? calculateFeedback(fragColor, fragCoord) : fragColor;    
+
+                // Triangle wave (mirrored/zig-zag modulo): 0→1→0 instead of 0→1→0 (harsh jump)
+                // fragColor = abs(fract(fragColor / .25) * 2.0 - 1.0);
+
                 FragColor = fragColor; // WebGL2 output
             }
 

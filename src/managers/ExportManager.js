@@ -269,6 +269,7 @@ export class ExportManager {
                 saturation: s.colorGradingPass.uniforms.saturation.value,
                 brightness: s.colorGradingPass.uniforms.brightness.value,
                 gamma: s.colorGradingPass.uniforms.gamma.value,
+                hueShift: s.colorGradingPass.uniforms.hueShift.value,
                 solarizeMix: s.colorGradingPass.uniforms.solarizeMix.value,
                 solarizeLightThresh: s.colorGradingPass.uniforms.solarizeLightThresh.value,
                 solarizeLightSoft: s.colorGradingPass.uniforms.solarizeLightSoft.value,
@@ -447,6 +448,9 @@ export class ExportManager {
             s.colorGradingPass.uniforms.saturation.value = s.colorParams.saturation;
             s.colorGradingPass.uniforms.brightness.value = s.colorParams.brightness;
             s.colorGradingPass.uniforms.gamma.value = s.colorParams.gamma;
+            if (s.colorParams.hueShift !== undefined) {
+                s.colorGradingPass.uniforms.hueShift.value = s.colorParams.hueShift;
+            }
             s.colorGradingPass.uniforms.solarizeMix.value = s.colorParams.solarizeMix;
             s.colorGradingPass.uniforms.solarizeLightThresh.value = s.colorParams.solarizeLightThresh;
             s.colorGradingPass.uniforms.solarizeLightSoft.value = s.colorParams.solarizeLightSoft;

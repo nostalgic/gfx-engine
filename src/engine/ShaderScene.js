@@ -45,6 +45,10 @@ export class ShaderScene {
         this.halvingPhase = { x: 0.0, y: 0.0, z: 0.0 };
         this.halvingVel   = { x: 0.0, y: 0.0, z: 0.0 };
 
+        // Fog/Turbulence Time Physics
+        this.fogTime = 0.0;
+        this.fogVel = 0.0;
+
         // Debug Mode
         this.debugUvFeedback = false;
 
@@ -167,6 +171,7 @@ export class ShaderScene {
             u_turb_speed: { value: 0.3 },
             u_turb_freq: { value: 2.1 },
             u_turb_exp: { value: 1.4 },
+            u_turb_time: { value: 0.0 },
 
             // Fractal Physics
             u_fractal_drift_x: { value: 0.0 },
@@ -389,6 +394,7 @@ export class ShaderScene {
                 'saturation': { value: 1.0 },
                 'brightness': { value: 0.0 },
                 'gamma': { value: 1.0 },
+                'hueShift': { value: 0.0 },
                 'solarizeMix': { value: 0.0 },
                 'solarizeLightThresh': { value: 0.7 },
                 'solarizeLightSoft': { value: 0.3 },
@@ -411,6 +417,7 @@ export class ShaderScene {
                 uniform float saturation;
                 uniform float brightness;
                 uniform float gamma;
+                uniform float hueShift;
                 uniform float solarizeMix;
                 uniform float solarizeLightThresh;
                 uniform float solarizeLightSoft;
@@ -425,6 +432,21 @@ export class ShaderScene {
                     float edgeHigh = thresh + softness * 0.5;
                     return smoothstep(edgeLow, edgeHigh, value);
                 }
+                
+                vec3 rgb2hsv(vec3 c) {
+                    vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+                    vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+                    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+                    float d = q.x - min(q.w, q.y);
+                    float e = 1.0e-10;
+                    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+                }
+                
+                vec3 hsv2rgb(vec3 c) {
+                    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+                    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+                    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+                }
 
                 void main(){
                     vec3 color = texture2D(tDiffuse, vUv).rgb;
@@ -435,6 +457,13 @@ export class ShaderScene {
                     float gray = dot(color, vec3(0.299, 0.587, 0.114));
                     color = mix(vec3(gray), color, saturation);
                     color = pow(max(color, vec3(0.0)), vec3(1.0 / gamma));
+                    
+                    // Hue shift
+                    if (abs(hueShift) > 0.001) {
+                        vec3 hsv = rgb2hsv(color);
+                        hsv.x = fract(hsv.x + hueShift / 360.0);
+                        color = hsv2rgb(hsv);
+                    }
 
                     // Solarize
                     vec3 inverted = 1.0 - color;
@@ -574,6 +603,85 @@ export class ShaderScene {
         this.colorGradingPass.uniforms.u_resolution.value.set(renderW, renderH);
         this.composer.addPass(this.colorGradingPass);
 
+
+        // Post Effects Shader (Dithering + RGB Split)
+        const PostEffectsShader = {
+            uniforms: {
+                'tDiffuse': { value: null },
+                'u_resolution': { value: new THREE.Vector2() }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main(){
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D tDiffuse;
+                uniform vec2 u_resolution;
+                varying vec2 vUv;
+                
+                #define DITHER_STRENGTH 0.25
+                #define DITHER_SCALE 1.
+                #define RGB_SPLIT_AMOUNT 0.05
+                
+                // Bayer matrix 8x8 for ordered dithering
+                float bayer8(vec2 pos) {
+                    int x = int(mod(pos.x, 8.0));
+                    int y = int(mod(pos.y, 8.0));
+                    int index = x + y * 8;
+                    float bayerMatrix[64];
+                    bayerMatrix[0] = 0.0/64.0; bayerMatrix[1] = 32.0/64.0; bayerMatrix[2] = 8.0/64.0; bayerMatrix[3] = 40.0/64.0;
+                    bayerMatrix[4] = 2.0/64.0; bayerMatrix[5] = 34.0/64.0; bayerMatrix[6] = 10.0/64.0; bayerMatrix[7] = 42.0/64.0;
+                    bayerMatrix[8] = 48.0/64.0; bayerMatrix[9] = 16.0/64.0; bayerMatrix[10] = 56.0/64.0; bayerMatrix[11] = 24.0/64.0;
+                    bayerMatrix[12] = 50.0/64.0; bayerMatrix[13] = 18.0/64.0; bayerMatrix[14] = 58.0/64.0; bayerMatrix[15] = 26.0/64.0;
+                    bayerMatrix[16] = 12.0/64.0; bayerMatrix[17] = 44.0/64.0; bayerMatrix[18] = 4.0/64.0; bayerMatrix[19] = 36.0/64.0;
+                    bayerMatrix[20] = 14.0/64.0; bayerMatrix[21] = 46.0/64.0; bayerMatrix[22] = 6.0/64.0; bayerMatrix[23] = 38.0/64.0;
+                    bayerMatrix[24] = 60.0/64.0; bayerMatrix[25] = 28.0/64.0; bayerMatrix[26] = 52.0/64.0; bayerMatrix[27] = 20.0/64.0;
+                    bayerMatrix[28] = 62.0/64.0; bayerMatrix[29] = 30.0/64.0; bayerMatrix[30] = 54.0/64.0; bayerMatrix[31] = 22.0/64.0;
+                    bayerMatrix[32] = 3.0/64.0; bayerMatrix[33] = 35.0/64.0; bayerMatrix[34] = 11.0/64.0; bayerMatrix[35] = 43.0/64.0;
+                    bayerMatrix[36] = 1.0/64.0; bayerMatrix[37] = 33.0/64.0; bayerMatrix[38] = 9.0/64.0; bayerMatrix[39] = 41.0/64.0;
+                    bayerMatrix[40] = 51.0/64.0; bayerMatrix[41] = 19.0/64.0; bayerMatrix[42] = 59.0/64.0; bayerMatrix[43] = 27.0/64.0;
+                    bayerMatrix[44] = 49.0/64.0; bayerMatrix[45] = 17.0/64.0; bayerMatrix[46] = 57.0/64.0; bayerMatrix[47] = 25.0/64.0;
+                    bayerMatrix[48] = 15.0/64.0; bayerMatrix[49] = 47.0/64.0; bayerMatrix[50] = 7.0/64.0; bayerMatrix[51] = 39.0/64.0;
+                    bayerMatrix[52] = 13.0/64.0; bayerMatrix[53] = 45.0/64.0; bayerMatrix[54] = 5.0/64.0; bayerMatrix[55] = 37.0/64.0;
+                    bayerMatrix[56] = 63.0/64.0; bayerMatrix[57] = 31.0/64.0; bayerMatrix[58] = 55.0/64.0; bayerMatrix[59] = 23.0/64.0;
+                    bayerMatrix[60] = 61.0/64.0; bayerMatrix[61] = 29.0/64.0; bayerMatrix[62] = 53.0/64.0; bayerMatrix[63] = 21.0/64.0;
+                    return bayerMatrix[index];
+                }
+                
+                vec3 dither(vec3 color, vec2 screenPos) {
+                    float threshold = bayer8(screenPos * DITHER_SCALE);
+                    // return color + (threshold - 0.5) * DITHER_STRENGTH;
+                    return color - threshold;
+                }
+                
+                vec3 rgbSplit(sampler2D tex, vec2 uv, float amount) {
+                    float r = texture2D(tex, uv + vec2(amount, 0.0)).r;
+                    float g = texture2D(tex, uv).g;
+                    float b = texture2D(tex, uv - vec2(amount, 0.0)).b;
+                    return vec3(r, g, b);
+                }
+                
+                void main(){
+                    vec2 screenPos = vUv * u_resolution;
+                    
+                    // Apply RGB split
+                    vec3 color = rgbSplit(tDiffuse, vUv, RGB_SPLIT_AMOUNT);
+                    
+                    // Apply dithering
+                    color = dither(color, screenPos);
+                    
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `
+        };
+
+        // this.postEffectsPass = new ShaderPass(PostEffectsShader);
+        // this.postEffectsPass.uniforms.u_resolution.value.set(renderW, renderH);
+        // this.composer.addPass(this.postEffectsPass);
+
         this.edgePass = new ShaderPass(EdgeDetectionShader);
         this.edgePass.uniforms.u_resolution.value.set(renderW, renderH);
         this.composer.addPass(this.edgePass);
@@ -586,7 +694,7 @@ export class ShaderScene {
         this.normalsParams = { strength: 0.0, blend: 0.3, roughness: 0.3, F0: 0.04, diffuseScale: 0.8, specularScale: 0.2 };
         this.edgeParams = { strength: 0.0, threshold: 0.1, colorR: 1.0, colorG: 1.0, colorB: 1.0, sharpenStrength: 0.0 };
         this.colorParams = { 
-            contrast: 1.0, saturation: 1.0, brightness: 0.0, gamma: 1.0, 
+            contrast: 1.0, saturation: 1.0, brightness: 0.0, gamma: 1.0, hueShift: 0.0,
             solarizeMix: 0.0, solarizeLightThresh: 0.5, solarizeLightSoft: 0.0, 
             solarizeDarkThresh: 0.5, solarizeDarkSoft: 0.0, 
             borderThickness: 0.0, borderColor: new THREE.Vector3(1.0, 1.0, 1.0) 
@@ -785,7 +893,13 @@ export class ShaderScene {
         this.uniforms.u_fractal_halving_phase_y.value = this.halvingPhase.y;
         this.uniforms.u_fractal_halving_phase_z.value = this.halvingPhase.z;
 
-        // 5. UV Feedback Pass
+        // 5. Fog/Turbulence Time Integration
+        const targetFogVel = this.uniforms.u_turb_speed.value;
+        this.fogVel += (targetFogVel - this.fogVel) * 0.5;
+        this.fogTime += this.fogVel * deltaTime * s;
+        this.uniforms.u_turb_time.value = this.fogTime;
+
+        // 6. UV Feedback Pass
         this.uvFeedbackMaterial.uniforms.u_feedback_uv.value = this.uvFeedbackTarget.texture;
         this.uvFeedbackMaterial.uniforms.u_warp_amplitude.value = this.uniforms.u_warp_amplitude.value;
         this.uvFeedbackMaterial.uniforms.u_polarize.value = this.uniforms.u_polarize.value;
@@ -801,7 +915,14 @@ export class ShaderScene {
         this.tempUvTarget = tmpUv;
         this.uniforms.u_uv_feedback.value = this.uvFeedbackTarget.texture;
 
-        // 6. Main Raymarch (to Feedback Buffer)
+        // 6a. Optional UV Debug Visualization
+        if (this.debugUvFeedback) {
+            // Render UV feedback directly to screen and skip everything else
+            this.renderer.render(this.uvFeedbackScene, this.camera);
+            return; // skip rest of pipeline
+        }
+
+        // 7. Main Raymarch (to Feedback Buffer)
         // Use the current feedback texture BEFORE rendering
         this.renderer.setRenderTarget(this.tempTarget);
         this.renderer.render(this.scene, this.camera);
@@ -815,7 +936,7 @@ export class ShaderScene {
         // Update the uniform to point to the newly rendered texture
         this.uniforms.u_feedback_texture.value = this.feedbackTarget.texture;
         
-        // 7. Composer Render (Bloom, etc)
+        // 8. Composer Render (Bloom, etc)
         this.composer.render();
     }
 }

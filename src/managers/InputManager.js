@@ -158,6 +158,13 @@ export class InputManager {
         const currentIndex = speeds.findIndex(s => Math.abs(s - this.scene.speed) < 0.01);
         const nextIndex = (currentIndex + 1) % speeds.length;
         this.scene.speed = speeds[nextIndex];
+        
+        // Update the slider value directly
+        const speedSlider = document.getElementById('speed');
+        if (speedSlider) {
+            speedSlider.value = this.scene.speed;
+        }
+        
         this.ui.updateDisplay();
         console.log(`Speed: ${this.scene.speed}`);
     }

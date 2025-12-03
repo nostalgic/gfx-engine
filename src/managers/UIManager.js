@@ -151,6 +151,7 @@ export class UIManager {
         this.bind('colorSaturation', null, false, v => this.scene.colorGradingPass.uniforms.saturation.value = v);
         this.bind('colorBrightness', null, false, v => this.scene.colorGradingPass.uniforms.brightness.value = v);
         this.bind('colorGamma', null, false, v => this.scene.colorGradingPass.uniforms.gamma.value = v);
+        this.bind('colorHueShift', null, false, v => this.scene.colorGradingPass.uniforms.hueShift.value = v);
         this.bind('colorSolarizeMix', null, false, v => this.scene.colorGradingPass.uniforms.solarizeMix.value = v);
         this.bind('colorSolarizeLightThresh', null, false, v => this.scene.colorGradingPass.uniforms.solarizeLightThresh.value = v);
         this.bind('colorSolarizeLightSoft', null, false, v => this.scene.colorGradingPass.uniforms.solarizeLightSoft.value = v);
@@ -454,7 +455,11 @@ export class UIManager {
         });
         
         const speedEl = document.getElementById('speed');
-        if(speedEl) speedEl.value = this.scene.speed;
+        const speedValueEl = document.getElementById('speedValue');
+        if(speedEl) {
+            speedEl.value = this.scene.speed;
+            if(speedValueEl) speedValueEl.innerText = this.scene.speed.toFixed(2);
+        }
     }
 
     initPalettePresets() {
