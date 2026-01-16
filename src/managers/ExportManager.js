@@ -173,9 +173,11 @@ export class ExportManager {
                 u_feedback_blur: s.uniforms.u_feedback_blur.value,
                 u_feedback_distort: s.uniforms.u_feedback_distort.value,
                 u_feedback_noise_scale: s.uniforms.u_feedback_noise_scale.value,
-                u_feedback_octaves: s.uniforms.u_feedback_octaves.value,
+                u_feedback_harmonics: s.uniforms.u_feedback_harmonics.value,
                 u_feedback_lacunarity: s.uniforms.u_feedback_lacunarity.value,
-                u_feedback_persistence: s.uniforms.u_feedback_persistence.value,
+                u_feedback_gain: s.uniforms.u_feedback_gain.value,
+                u_feedback_exponent: s.uniforms.u_feedback_exponent.value,
+                u_feedback_amplitude: s.uniforms.u_feedback_amplitude.value,
                 u_feedback_noise_mix: s.uniforms.u_feedback_noise_mix.value,
                 u_feedback_blend_mode: s.uniforms.u_feedback_blend_mode.value,
                 u_feedback_seed: s.uniforms.u_feedback_seed.value,
@@ -236,9 +238,10 @@ export class ExportManager {
                 u_uv_feedback_blur: s.uniforms.u_uv_feedback_blur.value,
                 u_uv_feedback_distort: s.uniforms.u_uv_feedback_distort.value,
                 u_uv_feedback_noise_scale: s.uniforms.u_uv_feedback_noise_scale.value,
-                u_uv_feedback_octaves: s.uniforms.u_uv_feedback_octaves.value,
+                u_uv_feedback_harmonics: s.uniforms.u_uv_feedback_harmonics.value,
                 u_uv_feedback_lacunarity: s.uniforms.u_uv_feedback_lacunarity.value,
-                u_uv_feedback_persistence: s.uniforms.u_uv_feedback_persistence.value,
+                u_uv_feedback_amplitude: s.uniforms.u_uv_feedback_amplitude.value,
+                u_uv_feedback_exponent: s.uniforms.u_uv_feedback_exponent.value,
                 u_uv_feedback_noise_mix: s.uniforms.u_uv_feedback_noise_mix.value,
                 u_uv_pixel_size: s.uniforms.u_uv_pixel_size.value,
                 u_uv_feedback_seed: s.uniforms.u_uv_feedback_seed.value,
@@ -249,7 +252,9 @@ export class ExportManager {
                 u_fractal_rot_time_sin: s.uniforms.u_fractal_rot_time_sin.value,
                 u_fractal_rot_time_cos: s.uniforms.u_fractal_rot_time_cos.value,
                 u_rot_time_sin: s.uniforms.u_rot_time_sin.value,
-                u_rot_time_cos: s.uniforms.u_rot_time_cos.value
+                u_rot_time_cos: s.uniforms.u_rot_time_cos.value,
+                u_uv_mirror_x: s.uniforms.u_uv_mirror_x.value,
+                u_uv_mirror_y: s.uniforms.u_uv_mirror_y.value
             },
             bloom: { 
                 strength: s.bloomPass.strength,
@@ -289,6 +294,11 @@ export class ExportManager {
                 colorG: s.edgePass.uniforms.u_edge_color.value.y,
                 colorB: s.edgePass.uniforms.u_edge_color.value.z,
                 sharpenStrength: s.edgePass.uniforms.u_sharpen_strength.value
+            },
+            postEffects: {
+                ditherStrength: s.postEffectsPass.uniforms.u_dither_strength.value,
+                ditherScale: s.postEffectsPass.uniforms.u_dither_scale.value,
+                rgbSplit: s.postEffectsPass.uniforms.u_rgb_split.value
             },
             gallery: {
                 aspect: s.gallery.galleryMode.aspect,
@@ -356,7 +366,7 @@ export class ExportManager {
             'u_mirror_x', 'u_mirror_y', 'u_mirror_z',
             'u_sdf_effect_type', 'u_sdf_effect_mix',
             'u_feedback_opacity', 'u_feedback_blur', 'u_feedback_distort', 'u_feedback_noise_scale',
-            'u_feedback_octaves', 'u_feedback_lacunarity', 'u_feedback_persistence',
+            'u_feedback_harmonics', 'u_feedback_lacunarity', 'u_feedback_gain', 'u_feedback_amplitude', 'u_feedback_exponent',
             'u_feedback_noise_mix', 'u_feedback_blend_mode', 'u_feedback_seed', 'u_feedback_layers',
             'u_pixel_size', 'u_color_type',
             'u_surface_normals_enabled', 'u_diffuse_strength', 'u_specular_strength',
@@ -374,8 +384,8 @@ export class ExportManager {
             'u_fractal_halving_time_x', 'u_fractal_halving_time_y', 'u_fractal_halving_time_z',
             'u_bloat_strength', 'u_pattern_type',
             'u_uv_feedback_opacity', 'u_uv_pixel_size', 'u_uv_feedback_blur', 'u_uv_feedback_distort',
-            'u_uv_feedback_noise_scale', 'u_uv_feedback_octaves', 'u_uv_feedback_lacunarity',
-            'u_uv_feedback_persistence', 'u_uv_feedback_noise_mix', 'u_uv_feedback_blend_mode',
+            'u_uv_feedback_noise_scale', 'u_uv_feedback_harmonics', 'u_uv_feedback_lacunarity', 'u_uv_feedback_gain',
+            'u_uv_feedback_amplitude', 'u_uv_feedback_exponent', 'u_uv_feedback_noise_mix', 'u_uv_feedback_blend_mode',
             'u_uv_feedback_layers', 'u_uv_feedback_seed'
         ];
         
@@ -491,6 +501,14 @@ export class ExportManager {
             );
         }
         
+        // Post Effects (Dithering & RGB Split)
+        if (preset.postEffects) {
+            Object.assign(s.postEffectsParams, preset.postEffects);
+            s.postEffectsPass.uniforms.u_dither_strength.value = s.postEffectsParams.ditherStrength;
+            s.postEffectsPass.uniforms.u_dither_scale.value = s.postEffectsParams.ditherScale;
+            s.postEffectsPass.uniforms.u_rgb_split.value = s.postEffectsParams.rgbSplit;
+        }
+        
         // Gallery
         if (preset.gallery) {
             s.gallery.galleryMode.aspect = preset.gallery.aspect || 'fullscreen';
@@ -511,6 +529,10 @@ export class ExportManager {
                 s.gallery.setGalleryAspect(s.gallery.galleryMode.aspect);
             }
         }
+        
+        // UV Mirror controls
+        if (U.u_uv_mirror_x !== undefined) s.uniforms.u_uv_mirror_x.value = U.u_uv_mirror_x;
+        if (U.u_uv_mirror_y !== undefined) s.uniforms.u_uv_mirror_y.value = U.u_uv_mirror_y;
         
         // Update UI and rebuild material if needed
         if (s.ui?.updateDisplay) s.ui.updateDisplay();

@@ -449,6 +449,15 @@
             height: auto;
             margin-left: 0;
         }
+        
+        .shape-tabs {
+            flex-wrap: wrap;
+        }
+
+        .shape-tab {
+            width: 50%;
+            flex: auto !important;
+        }
 
         .mirror-tabs, .shape-tabs, .blend-mode-group, .uv-blend-mode-group {
             display: flex;
@@ -858,6 +867,18 @@
     </div>    
     <canvas id="canvas" style="display: none;"></canvas>
     
+    <!-- Hidden file input for image upload -->
+    <input type="file" id="imageFileInput" accept="image/*" style="display: none;">
+    
+    <!-- Image upload prompt overlay -->
+    <div id="imageUploadPrompt" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 50; text-align: center; cursor: pointer;">
+        <div style="background: rgba(0, 0, 0, 0.8); border: 2px dashed rgba(255, 255, 255, 0.5); border-radius: 12px; padding: 40px 60px; color: white; font-family: 'SF Mono', monospace;">
+            <div style="font-size: 48px; margin-bottom: 16px;">📷</div>
+            <div style="font-size: 14px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px;">Drag & Drop Image</div>
+            <div style="font-size: 11px; color: rgba(255, 255, 255, 0.6);">or click to select a file</div>
+        </div>
+    </div>
+    
     <div class="control-panel collapsed" id="controlPanel">
         <div class="panel-header">
             <div class="panel-title">CONTROLS</div>
@@ -943,6 +964,9 @@
                                 <button class="shape-tab active" id="shapeSingle" data-shape="0">Single</button>
                                 <button class="shape-tab" id="shapeRepeat" data-shape="1">Repeat</button>
                                 <button class="shape-tab" id="shapeFractal" data-shape="2">Fractal</button>
+                                <button class="shape-tab" id="shapeGround" data-shape="3">Ground</button>
+                                <button class="shape-tab" id="shapeFog" data-shape="4">Fog</button>
+                                <button class="shape-tab" id="shapeImage" data-shape="5">Image</button>
                             </div>
                         </div>
                         <div class="control-item">
@@ -999,7 +1023,7 @@
                         </div>
                         <div class="control-item">
                             <span class="control-label">Size</span>
-                            <input type="range" class="control-input" id="boxSize" min="0.01" max="0.5" step="0.001" value="0.1">
+                            <input type="range" class="control-input" id="boxSize" min="0.0" max="0.5" step="0.001" value="0.1">
                             <span class="control-value" id="boxSizeValue">0.1</span>
                         </div>
                         <div class="control-item">
@@ -1356,28 +1380,38 @@
                         </div>                         
                         <div class="control-item">
                             <span class="control-label">Period</span>
-                            <input type="range" class="control-input" id="feedbackNoiseScale" min="0.1" max="5.0" step="0.01" value="1.0">
+                            <input type="range" class="control-input" id="feedbackNoiseScale" min="0.01" max="5.0" step="0.01" value="1.0">
                             <span class="control-value" id="feedbackNoiseScaleValue">1.0</span>
                         </div>
                         <div class="control-item">
                             <span class="control-label">Harmonics</span>
-                            <input type="range" class="control-input" id="feedbackOctaves" min="1" max="8" step="1" value="4">
-                            <span class="control-value" id="feedbackOctavesValue">4</span>
+                            <input type="range" class="control-input" id="feedbackHarmonics" min="1" max="8" step="1" value="4">
+                            <span class="control-value" id="feedbackHarmonicsValue">4</span>
                         </div>
                         <div class="control-item">
                             <span class="control-label">Lacunarity</span>
-                            <input type="range" class="control-input" id="feedbackLacunarity" min="1.5" max="3.0" step="0.1" value="2.0">
+                            <input type="range" class="control-input" id="feedbackLacunarity" min="0.0" max="7.0" step="0.1" value="2.0">
                             <span class="control-value" id="feedbackLacunarityValue">2.0</span>
                         </div>
                         <div class="control-item">
                             <span class="control-label">Gain</span>
-                            <input type="range" class="control-input" id="feedbackPersistence" min="0.1" max="0.8" step="0.05" value="0.5">
-                            <span class="control-value" id="feedbackPersistenceValue">0.5</span>
+                            <input type="range" class="control-input" id="feedbackGain" min="0.0" max="1.0" step="0.01" value="0.5">
+                            <span class="control-value" id="feedbackGainValue">0.5</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Exponent</span>
+                            <input type="range" class="control-input" id="feedbackExponent" min="0.1" max="3.0" step="0.01" value="1.0">
+                            <span class="control-value" id="feedbackExponentValue">1.0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Amplitude</span>
+                            <input type="range" class="control-input" id="feedbackAmplitude" min="0.0" max="2.0" step="0.01" value="0.5">
+                            <span class="control-value" id="feedbackAmplitudeValue">0.5</span>
                         </div>
                         <div class="control-item">
                             <span class="control-label">Noise Mix</span>
-                            <input type="range" class="control-input" id="feedbackNoiseMix" min="0.0" max="1.0" step="0.01" value="0.8">
-                            <span class="control-value" id="feedbackNoiseMixValue">0.8</span>
+                            <input type="range" class="control-input" id="feedbackNoiseMix" min="0.0" max="1.0" step="0.01" value="0.98">
+                            <span class="control-value" id="feedbackNoiseMixValue">0.98</span>
                         </div>
                         <!-- <div class="control-item">
                             <span class="control-label">Gamma</span>
@@ -1395,7 +1429,7 @@
                                 <button class="blend-btn" data-blend="1">Lighten</button>
                                 <button class="blend-btn" data-blend="2">Darken</button>
                             </div>
-                        </div>                       
+                        </div>
                     </div>                                                                                    
                 </div>
                 <div class="tab-pane" id="post-tab">
@@ -1416,8 +1450,27 @@
                             <input type="range" class="control-input" id="bloomThreshold" min="0.0" max="1.0" step="0.01" value="0.85">
                             <span class="control-value" id="bloomThresholdValue">0.85</span>
                         </div>
-                    </div>   
-                    <hr> 
+                    </div>
+                    <hr>
+                    <div class="control-group">
+                        <h3>Dithering & RGB Split</h3>
+                        <div class="control-item">
+                            <span class="control-label">Dither Strength</span>
+                            <input type="range" class="control-input" id="ditherStrength" min="0.0" max="1.0" step="0.01" value="0.0">
+                            <span class="control-value" id="ditherStrengthValue">0.0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Dither Scale</span>
+                            <input type="range" class="control-input" id="ditherScale" min="0.1" max="5.0" step="0.1" value="1.0">
+                            <span class="control-value" id="ditherScaleValue">1.0</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">RGB Split</span>
+                            <input type="range" class="control-input" id="rgbSplit" min="0.0" max="0.05" step="0.001" value="0.0">
+                            <span class="control-value" id="rgbSplitValue">0.0</span>
+                        </div>
+                    </div>
+                    <hr>
                     <div class="control-group">
                         <h3>Color Grading</h3>
                         <div class="control-item">
@@ -1540,27 +1593,7 @@
                             </div>
                         </div>
 
-                    </div>
-                    <hr>                     
-                    <div class="control-group">
-                        <h3>Border</h3>
-                        
-                        <div class="control-item">
-                            <span class="control-label">Border Thickness</span>
-                            <div class="control-input-container">
-                                <input type="range" class="control-input" id="colorBorderThickness" min="0.0" max="0.1" step="0.01" value="0.00">
-                                <span class="control-value" id="colorBorderThicknessValue">0.00</span>
-                            </div>
-                        </div>
-                    
-                        <div class="control-item">
-                            <span class="control-label">Border Color</span>
-                            <div class="control-input-container color-picker-container">
-                                <input type="color" id="borderColorPicker" value="#00FF00">
-                                <input type="text" id="borderColorHex" placeholder="#00FF00" value="#00FF00" pattern="^#[0-9A-Fa-f]{6}$">
-                            </div>
-                        </div>
-                    </div>                        
+                    </div>                                  
                 </div>
                 
                 <!-- Color Tab -->
@@ -1569,7 +1602,7 @@
                         <h3>Color</h3>
                         <div class="control-item">
                             <span class="control-label">Color Type</span>
-                            <input type="range" class="control-input" id="colorType" min="0.0" max="15.0" step="1.0" value="0.0">
+                            <input type="range" class="control-input" id="colorType" min="0.0" max="16.0" step="1.0" value="0.0">
                             <span class="control-value" id="colorTypeValue">0.0</span>
                         </div>
                         <div class="control-item">
@@ -1675,8 +1708,17 @@
 
                 <div class="tab-pane" id="warp-tab">                    
                     <div class="control-group">
-                        <h3>UV Warp</h3>
-                        
+                        <div class="control-item">
+                            <h3>UV Mirror</h3>
+                            <div class="mirror-tabs">
+                                <button class="mirror-tab" data-uv-mirror="all">ALL</button>
+                                <button class="mirror-tab" data-uv-mirror="x">X</button>
+                                <button class="mirror-tab" data-uv-mirror="y">Y</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <h3>UV Warp</h3>                        
                         <div class="control-item">
                             <span class="control-label">UV Scale</span>
                             <div class="control-input-container">
@@ -1777,7 +1819,7 @@
                         <div class="control-item">
                             <span class="control-label">Type</span>
                             <div class="control-input-container">
-                                <input type="range" class="control-input" id="patternType" min="0" max="3" step="1" value="0">
+                                <input type="range" class="control-input" id="patternType" min="0" max="5" step="1" value="0">
                                 <span class="control-value" id="patternTypeValue">0</span>
                             </div>
                         </div>                        
@@ -1802,7 +1844,7 @@
                                 <input type="range" class="control-input" id="uvGridSizeY" min="1.0" max="50.0" step="1.0" value="20.0">
                                 <span class="control-value" id="uvGridSizeYValue">20</span>
                             </div>
-                        </div>                
+                        </div>                                            
                     </div>
                     <hr>  
                     <div class="control-item">
@@ -1814,7 +1856,7 @@
                     <div class="control-group">
                         <h3>UV Feedback</h3>
                         <div class="control-item"><span class="control-label">Opacity</span>
-                            <input type="range" class="control-input" id="uvFeedbackOpacity" min="0" max="1" step="0.01" value="0.0">
+                            <input type="range" class="control-input" id="uvFeedbackOpacity" min="0" max="1" step="0.001" value="0.0">
                             <span class="control-value" id="uvFeedbackOpacityValue">0.0</span>
                         </div>
                         <div class="control-item"><span class="control-label">Blur</span>
@@ -1839,17 +1881,25 @@
                             <input type="range" class="control-input" id="uvFeedbackNoiseScale" min="0.1" max="6" step="0.01" value="1.0">
                             <span class="control-value" id="uvFeedbackNoiseScaleValue">1.0</span>
                         </div>
-                        <div class="control-item"><span class="control-label">Octaves</span>
-                            <input type="range" class="control-input" id="uvFeedbackOctaves" min="1" max="8" step="1" value="4">
-                            <span class="control-value" id="uvFeedbackOctavesValue">4</span>
+                        <div class="control-item"><span class="control-label">Harmonics</span>
+                            <input type="range" class="control-input" id="uvFeedbackHarmonics" min="1" max="8" step="1" value="4">
+                            <span class="control-value" id="uvFeedbackHarmonicsValue">4</span>
                         </div>
                         <div class="control-item"><span class="control-label">Lacunarity</span>
-                            <input type="range" class="control-input" id="uvFeedbackLacunarity" min="1.5" max="3.0" step="0.1" value="2.0">
+                            <input type="range" class="control-input" id="uvFeedbackLacunarity" min="0.0" max="7.0" step="0.1" value="2.0">
                             <span class="control-value" id="uvFeedbackLacunarityValue">2.0</span>
                         </div>
                         <div class="control-item"><span class="control-label">Gain</span>
-                            <input type="range" class="control-input" id="uvFeedbackPersistence" min="0.1" max="0.8" step="0.05" value="0.5">
-                            <span class="control-value" id="uvFeedbackPersistenceValue">0.5</span>
+                            <input type="range" class="control-input" id="uvFeedbackGain" min="0.0" max="1.0" step="0.01" value="0.5">
+                            <span class="control-value" id="uvFeedbackGainValue">0.5</span>
+                        </div>
+                        <div class="control-item"><span class="control-label">Exponent</span>
+                            <input type="range" class="control-input" id="uvFeedbackExponent" min="0.1" max="3.0" step="0.01" value="1.0">
+                            <span class="control-value" id="uvFeedbackExponentValue">1.0</span>
+                        </div>
+                        <div class="control-item"><span class="control-label">Amplitude</span>
+                            <input type="range" class="control-input" id="uvFeedbackAmplitude" min="0.0" max="2.0" step="0.01" value="0.5">
+                            <span class="control-value" id="uvFeedbackAmplitudeValue">0.5</span>
                         </div>
                         <div class="control-item"><span class="control-label">Noise Mix</span>
                             <input type="range" class="control-input" id="uvFeedbackNoiseMix" min="0" max="1" step="0.01" value="0.98">
@@ -1970,8 +2020,8 @@
                             <span class="control-label">Import</span>
                             <input type="file" class="control-input" id="importPreset" accept=".json" style="color: rgba(255, 255, 255, 0.7); font-size: 10px;">
                         </div>
-                    </div>
-                    <hr>                          
+                    </div>                            
+                    <hr> 
                     <div class="control-group">
                         <h3>Gallery Mode</h3>
                         
@@ -1985,6 +2035,7 @@
                                 <button class="aspect-btn" data-aspect="21:9">21:9</button>
                             </div>
                         </div>
+                        
 
                         <div class="control-item">
                             <span class="control-label">Background Color</span>
@@ -2001,7 +2052,50 @@
                                 <span class="control-value" id="galleryScaleValue">0.50</span>
                             </div>
                         </div>
-                    </div>                                   
+
+                        <div class="control-item">
+                            <span class="control-label">Border Thickness</span>
+                            <div class="control-input-container">
+                                <input type="range" class="control-input" id="colorBorderThickness" min="0.0" max="0.1" step="0.01" value="0.00">
+                                <span class="control-value" id="colorBorderThicknessValue">0.00</span>
+                            </div>
+                        </div>
+                    
+                        <div class="control-item">
+                            <span class="control-label">Border Color</span>
+                            <div class="control-input-container color-picker-container">
+                                <input type="color" id="borderColorPicker" value="#00FF00">
+                                <input type="text" id="borderColorHex" placeholder="#00FF00" value="#00FF00" pattern="^#[0-9A-Fa-f]{6}$">
+                            </div>
+                        </div>
+                    </div>  
+                    <!-- <hr> -->
+                    <!-- <div class="control-group">
+                        <h3>Remote Sync</h3>
+                        <div class="control-item">
+                            <span class="control-label">Room ID</span>
+                            <input type="text" id="syncRoomId" class="control-input" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 4px 8px;" placeholder="my-room" value="">
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Mode</span>
+                            <div class="mirror-tabs">
+                                <button class="mirror-tab active" data-sync-mode="both">Both</button>
+                                <button class="mirror-tab" data-sync-mode="controller">Control</button>
+                                <button class="mirror-tab" data-sync-mode="display">Display</button>
+                            </div>
+                        </div>
+                        <div class="control-item">
+                            <span class="control-label">Status</span>
+                            <span class="info-value" id="syncStatus">Disconnected</span>
+                        </div>
+                        <div class="control-item">
+                            <button class="control-input export-btn" id="syncConnect">Connect</button>
+                            <button class="control-input export-btn" id="syncDisconnect" style="display:none;">Disconnect</button>
+                        </div>
+                        <div class="control-item">
+                            <button class="control-input export-btn" id="copyDisplayUrl">Copy Display URL</button>
+                        </div>
+                    </div>                                  -->
                     <hr>                     
                     <div class="control-group">
                         <!-- <div class="info-item">

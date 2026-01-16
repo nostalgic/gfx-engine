@@ -14,8 +14,10 @@ uniform float u_feedback_distort;
 uniform float u_feedback_blur;
 uniform float u_feedback_noise_scale;
 uniform float u_feedback_lacunarity;
-uniform float u_feedback_persistence;
-uniform float u_feedback_octaves;
+uniform float u_feedback_amplitude;
+uniform float u_feedback_harmonics;
+uniform float u_feedback_gain;
+uniform float u_feedback_exponent;
 uniform float u_feedback_noise_mix;
 uniform int   u_feedback_blend_mode;   // 0=mix, 1=lighten, 2=darken
 uniform float u_feedback_seed;         // noise seed scrub
@@ -37,6 +39,8 @@ uniform float u_uv_pixel_size;
 
 uniform int u_pattern_type; // 0=off, 1=grid, 2=distance, 3=cell
 uniform float u_bloat_strength;
+uniform float u_uv_mirror_x;
+uniform float u_uv_mirror_y;
 
 #define TWO_PI 6.283185
 #define PI 3.14159265359
@@ -135,14 +139,17 @@ float fbmNoise(vec3 st) {
 
 // iterative domain warp (from your raymarch shader)
 void warp(inout vec2 uv) {
+    vec2 dxdy = vec2(0.0);
   float dx = 0.0;
   float dy = 0.0;
   for (int i = 0; i < u_warp_layers; i++) {
-    dx += fbmNoise(vec3(uv, u_time * 0.01));
-    dy += fbmNoise(vec3(uv + vec2(-40.0, 15.0), u_time * 0.01));
-    uv.x += dx;
-    uv.y += dy;
-    // uv.xy *= rotate(PI/6.0);
+    dxdy.x += fbmNoise(vec3(uv, u_time * 0.01));
+    dxdy.y += fbmNoise(vec3(uv + vec2(-40.0, 15.0), u_time * 0.01));
+    // dx = floor(dx * 8.0) / 8.0;
+    // // dy = floor(dy * 8.0) / 8.0;
+    // dxdy *= rotate(PI/6.0);
+    uv.x += dxdy.x;
+    uv.y += dxdy.y;
   }
 }
 
@@ -186,17 +193,20 @@ vec2 calculateFeedback(vec2 currentUV){
     vec2 uv = mix(prevUV, vUv - 0.5, u_feedback_noise_mix);
     float fbScale = 1. / u_feedback_noise_scale;
     vec2 noiseValue = vec2(0.0);
+    float expo = u_feedback_exponent;
     for(int i = 0; i < u_feedback_layers; i++) {
         float layerSeed = u_feedback_seed + float(i) * 10.0;
         noiseValue.x += fbmNoiseFeedback(vec3(uv * fbScale + vec2(layerSeed, 0.0),
                                u_time * 0.01),
-                               1.0, u_feedback_octaves, u_feedback_lacunarity, u_feedback_persistence);
+                               u_feedback_gain, u_feedback_harmonics, u_feedback_lacunarity, u_feedback_amplitude);
         noiseValue.y += fbmNoiseFeedback(vec3(uv * fbScale + vec2(layerSeed + 36.0, -27.0),
                                u_time * 0.01),
-                               1.0, u_feedback_octaves, u_feedback_lacunarity, u_feedback_persistence);
+                               u_feedback_gain, u_feedback_harmonics, u_feedback_lacunarity, u_feedback_amplitude);
+        // Handle negative values before pow() to avoid NaN
+        noiseValue = sign(noiseValue) * pow(abs(noiseValue), vec2(expo));
         uv += noiseValue.xy * 0.5; // dampen cumulative distortion
     }    
-    // for (int i = 0; i < int(u_feedback_octaves); i++) {
+    // for (int i = 0; i < int(u_feedback_harmonics); i++) {
     //     float lacunarity = pow(u_feedback_lacunarity, float(i));
     //     float amp = pow(u_feedback_persistence, float(i));
     //     noiseValue.x += amp * snoise(vec3(uv * fbScale * lacunarity, u_time * 0.1));
@@ -231,18 +241,20 @@ void precamWarp(inout vec2 uv) {
     // Domain Scaling
     uv *= 1./u_uv_scale;
 
-    // Lens Distort
+    // // Lens Distort
     float radius = length(uv);
     uv *= 1.0 - u_lens_distort * radius * radius;   
 
-    // Convert uv to polar coordinates    
+    // // Convert uv to polar coordinates    
     float angle = atan(uv.y, uv.x);
     angle = (angle / TWO_PI) + 0.5;
 
-    // Mirror at edges for seamless blend
-    angle = abs(fract(angle) - 0.5) * 2.0;
-    vec2 polarUv = vec2(radius, angle);
-    uv = mix(uv, polarUv, u_polarize); 
+    // // Mirror at edges for seamless blend
+    if (angle > 0.0) {
+        angle = abs(fract(angle) - 0.5) * 2.0;
+        vec2 polarUv = vec2(radius, angle);
+        uv = mix(uv, polarUv, u_polarize); 
+    }
 }
 
 void gridOverlay(inout vec2 uv) {
@@ -270,6 +282,73 @@ void gridOverlay(inout vec2 uv) {
 void trigDistort(inout vec2 uv) {
     uv.x *= mix(1.0, sin(cos(uv.x * (u_uv_distort.x * 3.))), u_uv_distort.x);
     uv.y *= mix(1.0, cos(sin(uv.y * (u_uv_distort.y * 3.))), u_uv_distort.y);
+}
+
+// Manhattan Worley Noise (F1 and F2 Distance)
+vec3 rand3DWorley(vec3 n) {
+    return fract(sin(vec3(dot(n, vec3(12.9898, 78.233, 45.161)),
+                          dot(n, vec3(26.9515, 14.137, 55.321)),
+                          dot(n, vec3(83.6732, 97.142, 33.567)))) * 43758.5453);
+}
+
+vec2 getWorleyDataManhattanF2(vec3 p) {
+    vec3 cell = floor(p);
+    vec3 f_st = fract(p);
+    
+    float min_dist_f1 = 1e30;
+    float min_dist_f2 = 1e30;
+
+    // Iterate over 3x3x3 neighbors
+    for (int k = -1; k <= 1; ++k) {
+        for (int j = -1; j <= 1; ++j) {
+            for (int i = -1; i <= 1; ++i) {
+                vec3 neighbor = vec3(float(i), float(j), float(k));
+                vec3 point_pos = rand3DWorley(cell + neighbor);
+                vec3 to_point = neighbor + point_pos - f_st;
+                
+                // Manhattan distance (L1 Norm)
+                float dist = abs(to_point.x) + abs(to_point.y) + abs(to_point.z);
+                
+                if (dist < min_dist_f1) {
+                    min_dist_f2 = min_dist_f1;
+                    min_dist_f1 = dist;
+                } else if (dist < min_dist_f2) {
+                    min_dist_f2 = dist;
+                }
+            }
+        }
+    }
+    return vec2(min_dist_f1, min_dist_f2);
+}
+
+void worleyOverlay(inout vec2 uv) {
+    // u_uv_grid_size.x = scale (cell size)
+    // u_uv_grid_size.y = time speed multiplier
+    // u_uv_grid_size.z = intensity/mix amount
+    
+    float scale = u_uv_grid_size.x;
+    float timeSpeed = u_uv_grid_size.y;
+    float intensity = u_uv_grid_size.z;
+    
+    vec2 pos2D = uv * scale;
+    float z_depth = u_time * (timeSpeed - 1.) * 0.005;
+    vec3 pos3D = vec3(pos2D, z_depth);
+    
+    vec2 worleyDistances = getWorleyDataManhattanF2(pos3D);
+    float f1 = worleyDistances.x;
+    float f2 = worleyDistances.y;
+    
+    // F2 - F1 creates cell edge patterns
+    float worleyMask = (f2 - f1);
+    // worleyMask = pow(worleyMask, 1.5); // sharpen edges
+    // Clamp to 0.4-0.6 range, modulo wrap, and normalize
+    // worleyMask = (clamp(worleyMask, 0.4, 0.6) - 0.4) / 0.2; // normalize 0.4-0.6 to 0-1
+    worleyMask = abs(fract(worleyMask / 0.125) * 4.0 - 2.0); // modulo wrap to 0-1
+    
+    
+    // Apply worley pattern to UV
+    // uv *= mix(1.0, 1.0 * worleyMask, intensity);
+    uv *= mix(1.0, 1.0 - worleyMask * 0.5, intensity);
 }
 
 void voronoiOverlay(inout vec2 uv) {
@@ -315,26 +394,57 @@ void voronoiOverlay(inout vec2 uv) {
         // Distance-based coloring (gradient from center to edges)
         float remappedZ = u_uv_grid_size.z;
         voronoiMask = smoothstep(0.0, 0.5, minDist) * remappedZ;
+        // Apply voronoi pattern to UV
+        uv *= mix(1.0, 1.0 - voronoiMask * 0.5, u_uv_grid_size.z);
     } else if (u_pattern_type == 3) {
         // Cell-based coloring (one color per cell)
         float random = fract(sin(dot(closestCellID, vec2(12.9898, 78.233))) * 43758.5453);
-        float remappedZ = u_uv_grid_size.z;
-        voronoiMask = random * remappedZ;
+        // float remappedZ = u_uv_grid_size.z;
+        // voronoiMask = random * remappedZ;
+        voronoiMask = random;
+
+        uv *= mix(1.0, voronoiMask, u_uv_grid_size.z);
     }
     
-    // Apply voronoi pattern to UV
-    uv *= mix(1.0, 1.0 - voronoiMask * 0.5, u_uv_grid_size.z);
+    
 }
 
 void bloatDistort(inout vec2 uv) {
-    float len = length(uv);
-    float bloat = u_bloat_strength;
-    uv *= pow(len, bloat);
+    if (u_bloat_strength > 0.0 || u_bloat_strength < 0.0) {
+        float len = length(uv);
+        len += 0.001;
+        float bloat = u_bloat_strength;
+        uv *= pow(len, bloat);
+    }
+}
+
+void fractalDistort(inout vec2 uv) {
+    vec2 uv0 = uv;
+    vec3 finalColor = vec3(0.0);
+
+    for (float i = 0.0; i < u_uv_grid_size.y / 10.; i++) {
+        uv = fract(uv * (u_uv_grid_size.z * 2.0 + 0.5) ) - 0.5;
+        float xyz = length(uv);
+        // float xyz = length(uv) * exp(-length(uv0));
+        // xyz -= 0.5;
+        xyz = sin(xyz * u_uv_grid_size.x - u_time * .25) / u_uv_grid_size.x;
+        xyz = abs(xyz);
+        // xyz *= 0.1;
+        // xyz = 0.01 / xyz;
+        xyz = smoothstep(0.0, 0.1, xyz);
+        // uv *= xyz;
+        finalColor += vec3(xyz);
+    }
+    uv *= finalColor.rg; 
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {    
     vec2 uv = (fragCoord * 2. - u_resolution.xy) / u_resolution.y;    
-    // uv = -abs(fract(uv / 1.) * 2.0 - 1.0);
+    
+    // UV Mirroring
+    if (u_uv_mirror_x > 0.5) uv.x = abs(uv.x);
+    if (u_uv_mirror_y > 0.5) uv.y = abs(uv.y);
+    
     uv.xy *= rotate(u_uv_rotate * TWO_PI);
     // uv = abs(uv);
     precamWarp(uv);
@@ -349,18 +459,29 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     // uv = fract(uv)-.5;
     if (u_pattern_type == 1) {
         gridOverlay(uv);
-    } else if (u_pattern_type > 1) {
+    } else if (u_pattern_type == 2 || u_pattern_type == 3) {
         voronoiOverlay(uv);
+    } else if (u_pattern_type == 4) {
+        worleyOverlay(uv);
+    } else if (u_pattern_type == 5) {
+        fractalDistort(uv);
     }
+
 
     vec2 warpedUV = calculateFeedback(uv);
     // warpedUV = pow(warpedUV + 0.5, vec2(1.0 + 0.01)); // adjust contrast if needed
     // fragColor = vec4(vec3(u_uv_pixel_size), 1.0);
     fragColor = vec4(warpedUV, 0.0, 1.0);
+    // fragColor = vec4(uv, 0.0, 1.0);
+    // fragColor = vec4(finalColor, 1.0);
 }
 
 void main(){
-    vec2 fragCoord = vUv * u_resolution;
+    // vec2 fragCoord = vUv * u_resolution;
+    // vec4 fragColor;
+
+    float pixelSize = u_uv_pixel_size * 20. + 1.; // Adjust for larger/smaller pixels
+    vec2 fragCoord = floor(vUv * u_resolution / pixelSize) * pixelSize;
     vec4 fragColor;
 
     mainImage(fragColor, fragCoord);

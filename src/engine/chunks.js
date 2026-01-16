@@ -93,12 +93,23 @@ export const COMMON_UNIFORMS = `
     uniform float u_feedback_noise_mix;
     uniform float u_feedback_noise_scale;
     uniform int u_feedback_layers;
-    uniform int u_feedback_octaves;
+    uniform int u_feedback_harmonics;
     uniform float u_feedback_lacunarity;
-    uniform float u_feedback_persistence;
+    uniform float u_feedback_gain;
+    uniform float u_feedback_exponent;
+    uniform float u_feedback_amplitude;
     uniform int u_feedback_blend_mode;
     uniform float u_feedback_seed;
-    uniform float u_pixel_size;    
+    uniform float u_pixel_size;
+    
+    // Image texture overlay
+    uniform sampler2D u_image_texture;
+    uniform float u_image_opacity;
+    uniform float u_image_aspect;
+    
+    // UV Mirroring
+    uniform float u_uv_mirror_x;
+    uniform float u_uv_mirror_y;
 `;
 
 // --- 2. STRUCTS ---
@@ -348,10 +359,12 @@ export const SDF_EFFECT_LIB = {
         return pEffect;
     }`,
     
-    // 10: Z time-modulated
+    // 10: Radial pulse distortion
     zTimeMod: `vec3 applySdfEffect(vec3 p, float l, float ld) {
         vec3 pEffect = p;
-        pEffect.z = pEffect.z * sin(l * (u_time * 0.2)) * 0.1;
+        float pulse = 0.8 + 0.2 * sin(l * 2.0 - u_time * 0.5);
+        pEffect *= pulse;
+        pEffect.xy *= rot2D(sin(l - u_time * 0.3) * 0.5);
         return pEffect;
     }`
 };
@@ -568,7 +581,56 @@ export const DOMAIN_FX = `
         return primitive + applyDisplace(p, offset);
     }
 `;
-
+// export const FOG_FX = `
+//     float g_fogStepSize;
+    
+//     // FBM-based Fog using proper noise layering
+//     float fog(vec3 p, float t) {        
+//         vec3 pos = p * 1.25;
+//         pos.x *= 0.6;
+        
+//         // FBM parameters
+//         float amplitude = u_turb_amp;
+//         float frequency = u_turb_freq;
+//         float lacunarity = u_turb_exp; // Frequency multiplier per octave
+//         float gain = 0.8; // Amplitude decay per octave
+        
+//         // Initialize accumulated noise
+//         float noiseAccum = 0.0;
+//         float totalAmplitude = 0.0;
+        
+//         // FBM octave loop - sum multiple noise frequencies
+//         for(float i = 0.0; i < u_turb_num; i++) {
+//             // Sample 3D simplex noise at current frequency
+//             vec3 samplePos = pos * frequency + vec3(u_turb_time * 0.5, u_turb_time * 0.3, u_turb_time * 0.4);
+//             float noiseValue = snoise(samplePos * u_fog_scale);
+            
+//             // Accumulate weighted noise
+//             noiseAccum += noiseValue * amplitude;
+//             totalAmplitude += amplitude;
+            
+//             // Scale for next octave (increase freq, decrease amp)
+//             frequency *= lacunarity;
+//             amplitude *= gain;
+//         }
+        
+//         // Normalize by total amplitude
+//         noiseAccum /= totalAmplitude;
+        
+//         // Apply noise to position for volumetric warping
+//         pos.xy += noiseAccum * u_turb_amp * 2.0;
+//         pos.z += noiseAccum * u_turb_amp * 0.5;
+        
+//         // Calculate step size based on warped position
+//         float yDistance = (pos * p).y;
+//         float clampedDistance = min(pos.y, -yDistance * 0.05);
+//         float adjustedDistance = 3.0 - 0.2 * t + clampedDistance;
+//         float boundedDistance = max(adjustedDistance * 2.0, -adjustedDistance * 0.6);
+//         float stepSize = 0.02 + 0.2 * boundedDistance + abs(noiseAccum) * 0.1;
+//         g_fogStepSize = stepSize;        
+//         return stepSize;
+//     }
+// `;
 export const FOG_FX = `
     float g_fogStepSize;
     float fog(vec3 p, float t) {        
@@ -886,7 +948,24 @@ export const COLOR_LIB = {
         // Mix glass effect with gradient background
         float glassMix = mix(0.5, 1.0, u_background_brightness);
         return mix(background, toneMap, shapeFactor) * glassMix;
-    }`
+    }`,
+
+    paletteGradient: `vec3 applyColorMode(float t, float d, int i, vec3 p, inout Color accum) {
+        // Background: vertical gradient based on ray direction Y (not position)
+        // This creates a flat gradient not influenced by raymarch depth
+        vec3 gradientCol = palette(g_rayDirection.y * (u_background_brightness * 2.) + u_time * .025);
+        // gradientCol *= u_background_brightness;
+        // Surface color (same as paletteShape)
+        accum.value = palette((u_color_intensity * 4.0) * t + (u_time * 0.025));
+        accum.intensity = 1.0;
+        vec3 surfaceCol = accum.value;
+        // vec3 surfaceCol = palette((u_time * .025) + t * 0.05 + float(i) * u_color_intensity);
+        
+        // Smooth blend between gradient background and surface
+        float shapeFactor = smoothstep(2.0, 0.0, d);
+        return mix(gradientCol, surfaceCol, shapeFactor);
+    }`,
+    
     // glassMaterial: `vec3 applyColorMode(float t, float d, int i, vec3 p, inout Color accum) {
     //     // Smooth distance-based frequency (no banding)
     //     float smoothFreq = d * (u_color_intensity * 20.0);
@@ -932,14 +1011,15 @@ export const COLOR_LIB = {
     // }`
 };
 
-export const LIGHTING_FX = `
+export const GLOBAL_VARS = `
     vec3 g_worldPos;
     vec3 g_rayDirection;
     float g_rayDistance;
     float g_rayTotal;
     float g_globalShape;
+`;
 
-
+export const LIGHTING_FX = `
     vec3 Tonemap_tanh(vec3 x) {
         x = clamp(x, -40.0, 40.0);
         vec3 exp_neg_2x = exp(-2.0 * x);
@@ -1016,13 +1096,17 @@ export const FEEDBACK_FX = `
         // recursive layering controlled by u_feedback_layers
         for(int i = 0; i < u_feedback_layers; i++) {
             float layerSeed = u_feedback_seed + float(i) * 10.0;
-            noiseValue.x += fbmNoiseFeedback(vec3(uv * fbscale + vec2(layerSeed, 0.0), u_time * 0.01), 1.0, u_feedback_octaves, u_feedback_lacunarity, u_feedback_persistence);
-            noiseValue.y += fbmNoiseFeedback(vec3(uv * fbscale + vec2(layerSeed + 36.0, -27.0), u_time * 0.01), 1.0, u_feedback_octaves, u_feedback_lacunarity, u_feedback_persistence);
-            uv += noiseValue.xy; // dampen cumulative distortion
+            noiseValue.x += fbmNoiseFeedback(vec3(uv * fbscale + vec2(layerSeed, 0.0), u_time * 0.01), u_feedback_gain, u_feedback_harmonics, u_feedback_lacunarity, u_feedback_amplitude);
+            noiseValue.y += fbmNoiseFeedback(vec3(uv * fbscale + vec2(layerSeed + 36.0, -27.0), u_time * 0.01), u_feedback_gain, u_feedback_harmonics, u_feedback_lacunarity, u_feedback_amplitude);
+            // noiseValue = pow(noiseValue, vec3(3.0)); // increase contrast
+            // uv += noiseValue.xy; // dampen cumulative distortion
+            noiseValue = sign(noiseValue) * pow(abs(noiseValue), vec3(u_feedback_exponent));
+            uv = noiseValue.xy; // dampen cumulative distortion
         }
 
         uv = u_pixel_size > 0.01 ? floor(uv / u_pixel_size + 0.5) * u_pixel_size : uv;
         vec2 distortedUV = vUv + (uv.xy) * (u_feedback_distort * .1);    
+        // vec2 distortedUV = vUv + (uv.xy) * (u_feedback_distort * .1);    
         vec4 feedbackColor = blur(u_feedback_texture, distortedUV, u_feedback_blur);
 
         // blending mode switch
@@ -1045,4 +1129,57 @@ float opLimitedRepetition(in vec3 p, in float s, in vec3 l, int i){
     vec3 id = round(p/s);
     vec3 q = p - s*clamp(round(p/s),-l,l);
     return sdShape(q, u_box_size);
+}`;
+
+export const IMAGE_FX = `
+vec4 applyImageMode(vec4 fragColor, vec2 fragCoord) {
+    vec2 uv = fragCoord / u_resolution.xy;
+    uv -= 0.5;
+    
+    float screenAspect = u_resolution.x / u_resolution.y;
+    float imageAspect = u_image_aspect;
+    
+    if (screenAspect > imageAspect) {
+        uv.y /= screenAspect / imageAspect;
+    } else {
+        uv.x /= imageAspect / screenAspect;
+    }
+    
+    uv += 0.5;
+    vec2 feedbackUv = texture(u_uv_feedback, uv).rg;
+    feedbackUv = feedbackUv * 0.5 + 0.5;
+    feedbackUv.x *= 0.5;
+    feedbackUv.x += 0.25;
+    vec4 imageColor = texture(u_image_texture, feedbackUv);
+    
+    fragColor.rgb = mix(fragColor.rgb, imageColor.rgb, u_image_opacity);
+    return fragColor;
+}
+`;
+
+export const GROUND_FX = `
+float groundHeight(vec2 xz){
+    // Animate terrain forward motion
+    // xz.y -= u_time * 0.5; // Adjust speed multiplier as needed (0.5 = moderate speed)
+    xz.y -= u_fractal_drift_offset_z * 10.;
+    
+    float f = max(0.1, u_feedback_distort * 2.0); // Increase frequency multiplier
+    float A = u_feedback_amplitude * 2.0; // Increase amplitude multiplier    
+    float fbscale = 1./u_feedback_noise_scale;             
+    float h = 0.0;
+    for(int i = 0; i < u_feedback_layers; i++) {
+        h += sin(xz.x * f) * cos(xz.y * f) * A;
+        // h += fbm2(xz * f * 0.35) * (A * 0.6);                
+        float layerSeed = u_feedback_seed + float(i) * 10.0;
+        h += fbmNoiseFeedback(vec3(xz * (fbscale * .2) + vec2(layerSeed, 0.0), 0.0), u_feedback_gain, u_feedback_harmonics, u_feedback_lacunarity, u_feedback_amplitude);
+        h = sign(h) * pow(abs(h), u_feedback_exponent);
+    }
+    
+    return h;
+}
+
+float sdGround(vec3 p){
+    float h = groundHeight(p.xz);
+    h -= 1.5;
+    return p.y - (h + -0.5);    // Ground offset
 }`;

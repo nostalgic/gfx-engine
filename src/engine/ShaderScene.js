@@ -74,6 +74,9 @@ export class ShaderScene {
         // Add resize listener
         window.addEventListener('resize', () => this.onResize());
         
+        // Setup drag and drop for images
+        this.setupImageDragDrop();
+        
         this.animate();
     }
 
@@ -86,7 +89,29 @@ export class ShaderScene {
             powerPreference: 'high-performance'
         });
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        
+        // Disable tone mapping and color space conversion for raw output
+        this.renderer.toneMapping = THREE.NoToneMapping;
+        this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     }
+
+    // TODO: WS sync
+    // initSyncFromURL() {
+    //     const params = new URLSearchParams(window.location.search);
+    //     const room = params.get('room');
+    //     const mode = params.get('mode') || 'both';
+    //     const server = params.get('server') || 'ws://localhost:8080';
+        
+    //     if (room) {
+    //         this.sync.connect(server, room, mode);
+            
+    //         // Hide controls if display-only mode
+    //         if (mode === 'display') {
+    //             const panel = document.getElementById('controlPanel');
+    //             if (panel) panel.style.display = 'none';
+    //         }
+    //     }
+    // }
 
     createUniforms() {
         // Randomize palette on load
@@ -214,10 +239,12 @@ export class ShaderScene {
             u_uv_feedback_blur: { value: 0.0 },
             u_uv_feedback_distort: { value: 0.025 },
             u_uv_feedback_noise_scale: { value: 1.0 },
-            u_uv_feedback_octaves: { value: 4 },
+            u_uv_feedback_harmonics: { value: 4 },
             u_uv_feedback_lacunarity: { value: 2.0 },
-            u_uv_feedback_persistence: { value: 0.5 },
-            u_uv_feedback_noise_mix: { value: 0.8 },
+            u_uv_feedback_gain: { value: 0.5 },
+            u_uv_feedback_amplitude: { value: 0.5 },
+            u_uv_feedback_exponent: { value: 1.0 },
+            u_uv_feedback_noise_mix: { value: 0.98 },
             u_uv_feedback_blend_mode: { value: 0 },
             u_uv_feedback_seed: { value: 0.0 },
             u_uv_feedback_layers: { value: 1 },
@@ -230,14 +257,23 @@ export class ShaderScene {
             u_feedback_blur: { value: 0.0 },
             u_feedback_distort: { value: 0.025 },
             u_feedback_noise_scale: { value: 1.0 },
-            u_feedback_octaves: { value: 4 },
+            u_feedback_harmonics: { value: 4 },
             u_feedback_lacunarity: { value: 2.0 },
-            u_feedback_persistence: { value: 0.5 },
-            u_feedback_noise_mix: { value: 0.8 },
+            u_feedback_gain: { value: 0.5 },
+            u_feedback_exponent: { value: 1.0 },
+            u_feedback_amplitude: { value: 0.5 },
+            u_feedback_noise_mix: { value: 0.98 },
             u_feedback_blend_mode: { value: 0 },
             u_feedback_seed: { value: 0.0 },
             u_feedback_layers: { value: 1 },
-            u_pixel_size: { value: 0.0 },            
+            u_pixel_size: { value: 0.0 },
+            
+            // Image texture overlay
+            u_image_texture: { value: null },
+            u_image_opacity: { value: 0.0 },
+            u_image_aspect: { value: 1.0 },
+            u_uv_mirror_x: { value: 0.0 },
+            u_uv_mirror_y: { value: 0.0 },            
         };
     }
 
@@ -266,9 +302,11 @@ export class ShaderScene {
                 u_feedback_distort: this.uniforms.u_uv_feedback_distort,
                 u_feedback_blur: this.uniforms.u_uv_feedback_blur,
                 u_feedback_noise_scale: this.uniforms.u_uv_feedback_noise_scale,
-                u_feedback_octaves: this.uniforms.u_uv_feedback_octaves,
-                u_feedback_lacunarity: this.uniforms.u_uv_feedback_lacunarity,
-                u_feedback_persistence: this.uniforms.u_uv_feedback_persistence,
+                u_feedback_harmonics: this.uniforms.u_uv_feedback_harmonics,
+                u_feedback_lacunarity: this.uniforms.u_uv_feedback_lacunarity,      
+                u_feedback_gain: this.uniforms.u_uv_feedback_gain,          
+                u_feedback_amplitude: this.uniforms.u_uv_feedback_amplitude,
+                u_feedback_exponent: this.uniforms.u_uv_feedback_exponent,
                 u_feedback_noise_mix: this.uniforms.u_uv_feedback_noise_mix,
                 u_feedback_blend_mode: this.uniforms.u_uv_feedback_blend_mode,
                 u_feedback_seed: this.uniforms.u_uv_feedback_seed,
@@ -286,7 +324,9 @@ export class ShaderScene {
                 u_warp_layers: this.uniforms.u_warp_layers,
                 u_uv_pixel_size: this.uniforms.u_uv_pixel_size,
                 u_pattern_type: this.uniforms.u_pattern_type,
-                u_bloat_strength: this.uniforms.u_bloat_strength
+                u_bloat_strength: this.uniforms.u_bloat_strength,
+                u_uv_mirror_x: this.uniforms.u_uv_mirror_x,
+                u_uv_mirror_y: this.uniforms.u_uv_mirror_y
             }
         });
         
@@ -599,16 +639,17 @@ export class ShaderScene {
         this.normalsPass.uniforms.u_resolution.value.set(renderW, renderH);
         this.composer.addPass(this.normalsPass);
 
-        this.colorGradingPass = new ShaderPass(ColorGradingShader);
-        this.colorGradingPass.uniforms.u_resolution.value.set(renderW, renderH);
-        this.composer.addPass(this.colorGradingPass);
+
 
 
         // Post Effects Shader (Dithering + RGB Split)
         const PostEffectsShader = {
             uniforms: {
                 'tDiffuse': { value: null },
-                'u_resolution': { value: new THREE.Vector2() }
+                'u_resolution': { value: new THREE.Vector2() },
+                'u_dither_strength': { value: 0.0 },
+                'u_dither_scale': { value: 1.0 },
+                'u_rgb_split': { value: 0.0 }
             },
             vertexShader: `
                 varying vec2 vUv;
@@ -620,11 +661,10 @@ export class ShaderScene {
             fragmentShader: `
                 uniform sampler2D tDiffuse;
                 uniform vec2 u_resolution;
+                uniform float u_dither_strength;
+                uniform float u_dither_scale;
+                uniform float u_rgb_split;
                 varying vec2 vUv;
-                
-                #define DITHER_STRENGTH 0.25
-                #define DITHER_SCALE 1.
-                #define RGB_SPLIT_AMOUNT 0.05
                 
                 // Bayer matrix 8x8 for ordered dithering
                 float bayer8(vec2 pos) {
@@ -652,9 +692,9 @@ export class ShaderScene {
                 }
                 
                 vec3 dither(vec3 color, vec2 screenPos) {
-                    float threshold = bayer8(screenPos * DITHER_SCALE);
-                    // return color + (threshold - 0.5) * DITHER_STRENGTH;
-                    return color - threshold;
+                    float threshold = bayer8(screenPos * u_dither_scale);
+                    return color + (threshold - 0.5) * u_dither_strength;
+                    // return mix(color, color * color * (threshold - 0.5) * u_dither_strength, u_dither_strength);
                 }
                 
                 vec3 rgbSplit(sampler2D tex, vec2 uv, float amount) {
@@ -668,19 +708,26 @@ export class ShaderScene {
                     vec2 screenPos = vUv * u_resolution;
                     
                     // Apply RGB split
-                    vec3 color = rgbSplit(tDiffuse, vUv, RGB_SPLIT_AMOUNT);
+                    vec3 color = rgbSplit(tDiffuse, vUv, u_rgb_split);
                     
                     // Apply dithering
-                    color = dither(color, screenPos);
+                    if (u_dither_strength > 0.0) {
+                        color = dither(color, screenPos);
+                    }
                     
                     gl_FragColor = vec4(color, 1.0);
                 }
             `
         };
 
-        // this.postEffectsPass = new ShaderPass(PostEffectsShader);
-        // this.postEffectsPass.uniforms.u_resolution.value.set(renderW, renderH);
-        // this.composer.addPass(this.postEffectsPass);
+        
+        this.postEffectsPass = new ShaderPass(PostEffectsShader);
+        this.postEffectsPass.uniforms.u_resolution.value.set(renderW, renderH);
+        this.composer.addPass(this.postEffectsPass);
+
+        this.colorGradingPass = new ShaderPass(ColorGradingShader);
+        this.colorGradingPass.uniforms.u_resolution.value.set(renderW, renderH);
+        this.composer.addPass(this.colorGradingPass);
 
         this.edgePass = new ShaderPass(EdgeDetectionShader);
         this.edgePass.uniforms.u_resolution.value.set(renderW, renderH);
@@ -693,6 +740,7 @@ export class ShaderScene {
         this.bloomParams = { strength: 0.0, radius: 0.4, threshold: 0.85 };
         this.normalsParams = { strength: 0.0, blend: 0.3, roughness: 0.3, F0: 0.04, diffuseScale: 0.8, specularScale: 0.2 };
         this.edgeParams = { strength: 0.0, threshold: 0.1, colorR: 1.0, colorG: 1.0, colorB: 1.0, sharpenStrength: 0.0 };
+        this.postEffectsParams = { ditherStrength: 0.25, ditherScale: 1.0, rgbSplit: 0.0 };
         this.colorParams = { 
             contrast: 1.0, saturation: 1.0, brightness: 0.0, gamma: 1.0, hueShift: 0.0,
             solarizeMix: 0.0, solarizeLightThresh: 0.5, solarizeLightSoft: 0.0, 
@@ -938,5 +986,109 @@ export class ShaderScene {
         
         // 8. Composer Render (Bloom, etc)
         this.composer.render();
+    }
+
+    setupImageDragDrop() {
+        const canvas = this.canvas;
+        
+        // Setup file input and prompt click handler
+        const fileInput = document.getElementById('imageFileInput');
+        const imagePrompt = document.getElementById('imageUploadPrompt');
+        
+        if (imagePrompt && fileInput) {
+            imagePrompt.addEventListener('click', () => {
+                fileInput.click();
+            });
+        }
+        
+        if (fileInput) {
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file && file.type.startsWith('image/')) {
+                    this.loadImageFile(file);
+                }
+                // Reset input so same file can be selected again
+                fileInput.value = '';
+            });
+        }
+        
+        // Prevent default drag behaviors
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            canvas.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            });
+        });
+        
+        // Visual feedback on drag
+        canvas.addEventListener('dragenter', () => {
+            canvas.style.opacity = '0.5';
+        });
+        
+        canvas.addEventListener('dragleave', () => {
+            canvas.style.opacity = '1.0';
+        });
+        
+        canvas.addEventListener('drop', (e) => {
+            canvas.style.opacity = '1.0';
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                const file = files[0];
+                
+                // Check if it's an image
+                if (file.type.startsWith('image/')) {
+                    this.loadImageFile(file);
+                } else {
+                    console.warn('⚠️ Please drop an image file');
+                }
+            }
+        });
+    }
+    
+    loadImageFile(file) {
+        const reader = new FileReader();
+        
+        reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+                // Create a THREE.js texture from the image
+                const texture = new THREE.Texture(img);
+                texture.needsUpdate = true;
+                texture.minFilter = THREE.LinearFilter;
+                texture.magFilter = THREE.LinearFilter;
+                texture.wrapS = THREE.ClampToEdgeWrapping;
+                texture.wrapT = THREE.ClampToEdgeWrapping;
+                
+                // Calculate and store image aspect ratio
+                const imageAspect = img.width / img.height;
+                
+                // Update the uniforms
+                this.uniforms.u_image_texture.value = texture;
+                this.uniforms.u_image_aspect.value = imageAspect;
+                this.uniforms.u_image_opacity.value = 1.0; // make image visible
+                
+                // Switch to image mode (mode 5)
+                this.uniforms.u_shape_mode.value = 5;
+                this.rebuildMaterial();
+                
+                // Update UI buttons
+                const shapeBtns = document.querySelectorAll('.shape-tab');
+                shapeBtns.forEach(b => b.classList.remove('active'));
+                const imageBtn = document.getElementById('shapeImage');
+                if (imageBtn) imageBtn.classList.add('active');
+                
+                // Show image controls and hide prompt
+                const imageControls = document.querySelector('.image-controls');
+                if (imageControls) imageControls.style.display = 'flex';
+                const imagePrompt = document.getElementById('imageUploadPrompt');
+                if (imagePrompt) imagePrompt.style.display = 'none';
+                
+                console.log(`✅ Image loaded: ${img.width}x${img.height}, aspect: ${imageAspect.toFixed(2)}`);
+            };
+            img.src = event.target.result;
+        };
+        
+        reader.readAsDataURL(file);
     }
 }

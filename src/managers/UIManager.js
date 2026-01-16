@@ -83,6 +83,8 @@ export class UIManager {
         this.bind('uvGridSizeY', 'u_uv_grid_size', null, false, 1);
         this.bind('uvGridSizeZ', 'u_uv_grid_size', null, false, 2);
         this.bind('patternType', 'u_pattern_type');
+        this.bind('uvMirrorX', 'u_uv_mirror_x');
+        this.bind('uvMirrorY', 'u_uv_mirror_y');
 
 
         // --- STANDARD FEEDBACK CONTROLS ---        
@@ -90,22 +92,27 @@ export class UIManager {
         this.bind('feedbackBlur', 'u_feedback_blur');
         this.bind('feedbackDistort', 'u_feedback_distort');
         this.bind('feedbackNoiseScale', 'u_feedback_noise_scale');
-        this.bind('feedbackOctaves', 'u_feedback_octaves');
+        this.bind('feedbackHarmonics', 'u_feedback_harmonics');
         this.bind('feedbackLacunarity', 'u_feedback_lacunarity');
-        this.bind('feedbackPersistence', 'u_feedback_persistence');
+        this.bind('feedbackGain', 'u_feedback_gain');
+        this.bind('feedbackExponent', 'u_feedback_exponent');
+        this.bind('feedbackAmplitude', 'u_feedback_amplitude');
         this.bind('feedbackNoiseMix', 'u_feedback_noise_mix');
         this.bind('feedbackSeed', 'u_feedback_seed');
         this.bind('feedbackLayers', 'u_feedback_layers');
         this.bind('pixelSize', 'u_pixel_size');
+        this.bind('imageOpacity', 'u_image_opacity');
 
         // --- UV FEEDBACK CONTROLS ---
         this.bind('uvFeedbackOpacity', 'u_uv_feedback_opacity');
         this.bind('uvFeedbackBlur', 'u_uv_feedback_blur');
         this.bind('uvFeedbackDistort', 'u_uv_feedback_distort');
         this.bind('uvFeedbackNoiseScale', 'u_uv_feedback_noise_scale');
-        this.bind('uvFeedbackOctaves', 'u_uv_feedback_octaves');
+        this.bind('uvFeedbackHarmonics', 'u_uv_feedback_harmonics');
         this.bind('uvFeedbackLacunarity', 'u_uv_feedback_lacunarity');
-        this.bind('uvFeedbackPersistence', 'u_uv_feedback_persistence');
+        this.bind('uvFeedbackGain', 'u_uv_feedback_gain');
+        this.bind('uvFeedbackExponent', 'u_uv_feedback_exponent');
+        this.bind('uvFeedbackAmplitude', 'u_uv_feedback_amplitude');
         this.bind('uvFeedbackNoiseMix', 'u_uv_feedback_noise_mix');
         this.bind('uvPixelSize', 'u_uv_pixel_size');
         this.bind('uvFeedbackSeed', 'u_uv_feedback_seed');
@@ -127,6 +134,17 @@ export class UIManager {
         this.bind('fractalHalvingTimeY', 'u_fractal_halving_time_y');
         this.bind('fractalHalvingTimeZ', 'u_fractal_halving_time_z');
 
+        // --- SURFACE LIGHTING ---
+        this.bind('surfaceNormals', 'u_surface_normals_enabled');
+        this.bind('ambient', 'u_ambient_strength');
+        this.bind('diffuse', 'u_diffuse_strength');
+        this.bind('specular', 'u_specular_strength');
+        this.bind('specularPower', 'u_specular_power');
+        this.bind('shadowStrength', 'u_shadow_strength');
+        this.bind('lightPosX', 'u_light_pos_x');
+        this.bind('lightPosY', 'u_light_pos_y');
+        this.bind('lightPosZ', 'u_light_pos_z');
+
         // --- COLOR TAB ---
         this.bind('colorIntensity', 'u_color_intensity');
         this.bind('backgroundBrightness', 'u_background_brightness');
@@ -137,6 +155,11 @@ export class UIManager {
         this.bind('bloomStrength', null, false, v => this.scene.bloomPass.strength = v);
         this.bind('bloomRadius', null, false, v => this.scene.bloomPass.radius = v);
         this.bind('bloomThreshold', null, false, v => this.scene.bloomPass.threshold = v);
+        
+        // Dithering & RGB Split
+        this.bind('ditherStrength', null, false, v => this.scene.postEffectsPass.uniforms.u_dither_strength.value = v);
+        this.bind('ditherScale', null, false, v => this.scene.postEffectsPass.uniforms.u_dither_scale.value = v);
+        this.bind('rgbSplit', null, false, v => this.scene.postEffectsPass.uniforms.u_rgb_split.value = v);
         
         // Screen-Space Normals (HTML: normalStrength, normalBlend, etc.)
         this.bind('normalStrength', null, false, v => this.scene.normalsPass.uniforms.u_normal_strength.value = v);
@@ -196,12 +219,30 @@ export class UIManager {
 
         // --- Shape Mode Buttons ---
         const shapeBtns = document.querySelectorAll('.shape-tab');
+        const imageControls = document.querySelector('.image-controls');
+        const imagePrompt = document.getElementById('imageUploadPrompt');
+        
         shapeBtns.forEach(btn => {
             btn.addEventListener('click', () => {
                 shapeBtns.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
-                this.scene.uniforms.u_shape_mode.value = parseInt(btn.dataset.shape);
+                const mode = parseInt(btn.dataset.shape);
+                this.scene.uniforms.u_shape_mode.value = mode;
                 this.scene.rebuildMaterial();
+                
+                // Show/hide image controls and prompt based on mode
+                if (mode === 5) {
+                    // Image mode
+                    if (imageControls) imageControls.style.display = 'flex';
+                    // Show prompt only if no image is loaded
+                    if (imagePrompt && !this.scene.uniforms.u_image_texture.value) {
+                        imagePrompt.style.display = 'block';
+                    }
+                } else {
+                    // Other modes
+                    if (imageControls) imageControls.style.display = 'none';
+                    if (imagePrompt) imagePrompt.style.display = 'none';
+                }
             });
         });
         
@@ -282,6 +323,78 @@ export class UIManager {
             });
         });         
 
+        // --- UV Mirror Buttons ---
+        const uvMirrorBtns = document.querySelectorAll('.mirror-tab[data-uv-mirror]');
+        uvMirrorBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const mirrorType = btn.dataset.uvMirror;
+                
+                if (mirrorType === 'all') {
+                    // Toggle all UV mirrors
+                    const isActive = btn.classList.contains('active');
+                    const newState = !isActive;
+                    const value = newState ? 1.0 : 0.0;
+                    
+                    // Update all UV mirror uniforms
+                    this.scene.uniforms.u_uv_mirror_x.value = value;
+                    this.scene.uniforms.u_uv_mirror_y.value = value;
+                    
+                    // Update all tab states
+                    uvMirrorBtns.forEach(t => {
+                        if (newState) {
+                            t.classList.add('active');
+                        } else {
+                            t.classList.remove('active');
+                        }
+                    });
+                } else {
+                    // Toggle individual UV mirror
+                    const isActive = btn.classList.contains('active');
+                    const newState = !isActive;
+                    const value = newState ? 1.0 : 0.0;
+                    
+                    // Update specific UV mirror uniform
+                    if (mirrorType === 'x') this.scene.uniforms.u_uv_mirror_x.value = value;
+                    else if (mirrorType === 'y') this.scene.uniforms.u_uv_mirror_y.value = value;
+                    
+                    // Update tab state
+                    btn.classList.toggle('active', newState);
+                    
+                    // Update "All" tab state based on individual states
+                    const xBtn = Array.from(uvMirrorBtns).find(b => b.dataset.uvMirror === 'x');
+                    const yBtn = Array.from(uvMirrorBtns).find(b => b.dataset.uvMirror === 'y');
+                    const allBtn = Array.from(uvMirrorBtns).find(b => b.dataset.uvMirror === 'all');
+                    
+                    const xActive = xBtn?.classList.contains('active') || false;
+                    const yActive = yBtn?.classList.contains('active') || false;
+                    const allActive = xActive && yActive;
+                    
+                    if (allBtn) {
+                        allBtn.classList.toggle('active', allActive);
+                    }
+                }
+            });
+        });
+        
+        // Initialize UV mirror button states
+        uvMirrorBtns.forEach(btn => {
+            const axis = btn.getAttribute('data-uv-mirror');
+            if (axis === 'all') {
+                // Check if both x and y are active
+                const xActive = this.scene.uniforms.u_uv_mirror_x.value > 0.5;
+                const yActive = this.scene.uniforms.u_uv_mirror_y.value > 0.5;
+                if (xActive && yActive) {
+                    btn.classList.add('active');
+                }
+            } else {
+                const uniformKey = `u_uv_mirror_${axis}`;
+                const currentValue = this.scene.uniforms[uniformKey].value;
+                if (currentValue > 0.5) {
+                    btn.classList.add('active');
+                }
+            }
+        });
+        
         // --- Fog Mode Buttons ---
         const fogBtns = document.querySelectorAll('.mirror-tab[data-fog]'); // Assuming reuse of class
         if(fogBtns.length > 0) {
@@ -416,8 +529,19 @@ export class UIManager {
                 } else {
                     this.scene.uniforms[uniform].value = val;
                 }
+
+                // Send sync update for remote control
+                // if (this.scene.sync?.isConnected) {
+                //     this.scene.sync.sendUniformUpdate(uniform, this.scene.uniforms[uniform].value);
+                // }
             }
-            if (customCallback) customCallback(val);
+            if (customCallback) {
+                customCallback(val);
+                // For custom callbacks (like speed, bloom), send the value with the id as key
+                // if (this.scene.sync?.isConnected) {
+                //     this.scene.sync.sendUniformUpdate(id, val);
+                // }
+            }
             if (disp) disp.innerText = val.toFixed(2);
             if (requiresRecompile) this.scene.rebuildMaterial();
         };

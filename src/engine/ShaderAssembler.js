@@ -1,5 +1,5 @@
 
-import { COMMON_UNIFORMS, STRUCTS, MATH_UTILS, NOISE_LIB, SDF_EFFECT_LIB, DISPLACE_LIB, DOMAIN_FX, FOG_FX, SDF_LIB, CRUNCH_LIB, COLOR_LIB, LIGHTING_FX, FEEDBACK_FX, LIMITED_REPEAT_FX } from './chunks.js';
+import { COMMON_UNIFORMS, STRUCTS, MATH_UTILS, NOISE_LIB, SDF_EFFECT_LIB, DISPLACE_LIB, DOMAIN_FX, FOG_FX, SDF_LIB, CRUNCH_LIB, COLOR_LIB, LIGHTING_FX, FEEDBACK_FX, LIMITED_REPEAT_FX, GROUND_FX, GLOBAL_VARS, IMAGE_FX } from './chunks.js';
 
 export class ShaderAssembler {
 
@@ -92,7 +92,8 @@ export class ShaderAssembler {
             'smoothSurface',      // 12
             'bandedRings',        // 13
             'rawDistance',        // 14
-            'glassMaterial'       // 15
+            'glassMaterial',       // 15
+            'paletteGradient'
         ];
         return keys[id] || 'paletteShape';
     }
@@ -125,10 +126,10 @@ export class ShaderAssembler {
         float map(vec3 p, int i, float t) {
             // 1. Domain Warping
             p = worldEffects(p, t);
+            p = u_sdf_effect_mix > 0.01 ? sceneWarp(p) : p;
             vec3 ogP = p;
 
             if (u_shape_mode == 2) { 
-                p = u_sdf_effect_mix > 0.01 ? sceneWarp(p) : p;
                 p = fractalWorld(p); 
             }
             
@@ -145,14 +146,20 @@ export class ShaderAssembler {
                 d = opLimitedRepetition(p * 0.65, 0.25, vec3(1.), i) / 0.65;
             } else if (u_shape_mode == 2) { // Fractal mode
                 d = sdShape(p, u_box_size);
+            } else if (u_shape_mode == 3) { // Ground mode
+                d = sdGround(p);
+            } else if (u_shape_mode == 4) { 
+                return fog(ogP, t);
+            } else if (u_shape_mode == 5) {
+                d = 0.0; 
             }
 
             // 3. Displacement
             ${displacementLogic}
             
             // 4. Global Fog Integration
-            if (u_fog_enabled == 2.0) return fog(ogP, t);
-            if (u_fog_enabled == 1.0) return min(fog(ogP, t), d);
+            // if (u_fog_enabled == 2.0) return fog(ogP, t);
+            // if (u_fog_enabled == 1.0) return min(fog(ogP, t), d);
             
             return d;
         }`;
@@ -164,6 +171,7 @@ export class ShaderAssembler {
 
             ${COMMON_UNIFORMS}
             ${STRUCTS}
+            ${GLOBAL_VARS}     // <--- Global variables
             ${MATH_UTILS}
             ${NOISE_LIB}
             ${activeCrunch}    // <--- Injected Crunch Effect
@@ -171,12 +179,14 @@ export class ShaderAssembler {
             ${activeSdfEffect} // <--- Injected SDF Effect
             ${DOMAIN_FX}
             ${FOG_FX}
+            ${GROUND_FX}
             ${activeSDF}       // <--- Injected Shape
             ${LIMITED_REPEAT_FX}
             ${mapFunction}     // <--- Injected Map logic
             ${activeColor}     // <--- Injected Color Mode
             ${LIGHTING_FX}
             ${FEEDBACK_FX}
+            ${IMAGE_FX}        // <--- Image overlay mode
 
             // === MAIN LOOP RECONSTRUCTED ===
             Camera ReadCamera(in vec2 uv) {
@@ -208,7 +218,7 @@ export class ShaderAssembler {
             void UpdateColor(float t, float d, int i, vec3 p, inout Color col) {
                 col.value = setBackgroundColorInLoop(t, d, i, p, col);
 
-                if (u_fog_enabled > 0.5) {
+                if (u_shape_mode == 4) {
                     col.value = setFogColor(p, t, col);
                 }
             }
@@ -217,7 +227,7 @@ export class ShaderAssembler {
                 g_worldPos = cam.ro + cam.rd * t;
                 g_rayTotal = t;
                 g_rayDirection = cam.rd;                
-            }
+            }                        
 
             void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                 vec2 uv = fragCoord / u_resolution.xy;
@@ -230,6 +240,9 @@ export class ShaderAssembler {
                 col.intensity = 1.0;
                 col.fogDensity = vec3(0.0);
 
+                // Set ray direction globally before raymarch for color calculations
+                g_rayDirection = cam.rd;
+
                 float eps = max(0.001, 0.001 / u_distance_scale);
                 float t = 0.0;
                 vec3 p = vec3(0.0);
@@ -237,7 +250,7 @@ export class ShaderAssembler {
                 for (int i = 0; i < 256; ++i) {
                     if (i >= u_lod_quality) break;
                     p = cam.ro + cam.rd * t;
-                    float d = map(p, i, t);
+                    float d = map(p, i, t);                    
                     g_rayDistance = d;
                     t += d;
                     
@@ -250,7 +263,7 @@ export class ShaderAssembler {
                 SetGlobalVars(cam, t);
 
                 // Surface Lighting
-                //CalculateNormals(t, p, light, col);
+                CalculateNormals(t, p, light, col);
                 
                 col.value = Tonemap_tanh(col.value);
                 fragColor = vec4(col.value, 1.0);
@@ -259,12 +272,28 @@ export class ShaderAssembler {
             void main(){
                 vec2 fragCoord = vUv * u_resolution;
                 vec4 fragColor;
+
+                // float pixelSize = u_pixel_size * 10. + 1.; // Adjust for larger/smaller pixels
+                // vec2 fragCoord = floor(vUv * u_resolution / pixelSize) * pixelSize;
+                // vec4 fragColor;
                 mainImage(fragColor, fragCoord);    
+                
+                // Image mode (u_shape_mode == 5)
+                if (u_shape_mode == 5 && u_image_opacity > 0.0) {
+                    fragColor = applyImageMode(fragColor, fragCoord);
+                }
+                    
                 fragColor = (u_feedback_opacity > 0.0) ? calculateFeedback(fragColor, fragCoord) : fragColor;    
 
                 // Triangle wave (mirrored/zig-zag modulo): 0→1→0 instead of 0→1→0 (harsh jump)
-                // fragColor = abs(fract(fragColor / .25) * 2.0 - 1.0);
+                // fragColor = abs(fract(fragColor / .125) * 4.0 - 2.0);
 
+                // fragColor = vec4(floor(fragColor.rgb * 5.0 + 0.5) / 5.0, 1.0);
+
+                // float pixelSize = 8.0; // Adjust for larger/smaller pixels
+                // vec2 pixelatedUV = floor(fragCoord / pixelSize) * pixelSize / u_resolution;
+                // fragColor = texture(u_feedback_texture, pixelatedUV);
+                
                 FragColor = fragColor; // WebGL2 output
             }
 

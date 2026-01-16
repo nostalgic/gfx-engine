@@ -114,15 +114,21 @@ export class InputManager {
     }
 
     startFeedbackReset() {
-        // Method to be called when '1' key is pressed down
-        // Add your feedback reset logic here
-        console.log('Feedback reset started');
+        if (this.feedbackResetPressed) return; // Already pressed
+        this.originalFeedbackOpacity = this.scene.uniforms.u_feedback_opacity.value;
+        this.originalUvFeedbackOpacity = this.scene.uniforms.u_uv_feedback_opacity.value;
+        this.scene.uniforms.u_feedback_opacity.value = 0.0;
+        this.scene.uniforms.u_uv_feedback_opacity.value = 0.0;
+        this.feedbackResetPressed = true;
+        this.ui.updateDisplay();
     }
 
     stopFeedbackReset() {
-        // Method to be called when '1' key is released
-        // Add your feedback reset stop logic here
-        console.log('Feedback reset stopped');
+        if (!this.feedbackResetPressed) return; // Not currently pressed
+        this.scene.uniforms.u_feedback_opacity.value = this.originalFeedbackOpacity;
+        this.scene.uniforms.u_uv_feedback_opacity.value = this.originalUvFeedbackOpacity;
+        this.feedbackResetPressed = false;
+        this.ui.updateDisplay();
     }
 
     toggleResolution() {
@@ -132,6 +138,13 @@ export class InputManager {
         const nextIndex = (currentIndex + 1) % resolutions.length;
         this.scene.resolutionScale = resolutions[nextIndex];
         this.scene.onResize();
+        
+        // Update the slider directly since it's not bound to a uniform
+        const resSlider = document.getElementById('resolutionScale');
+        const resValue = document.getElementById('resolutionScaleValue');
+        if (resSlider) resSlider.value = this.scene.resolutionScale;
+        if (resValue) resValue.innerText = this.scene.resolutionScale.toFixed(2);
+        
         console.log(`Resolution scale: ${this.scene.resolutionScale}`);
     }
 
@@ -212,16 +225,91 @@ export class InputManager {
     }
 
     handleMIDI(msg) {
-        const [status, note, velocity] = msg.data;
+        const [status, note, value] = msg.data;
         const type = status & 0xf0;
-        const norm = velocity / 127.0;
+        const normalized = value / 127.0;
 
-        if (type === 0xb0) { // CC
-            // Example mappings based on your old code
-            if (note === 70) this.scene.uniforms.u_feedback_opacity.value = norm;
-            if (note === 74) this.scene.uniforms.u_twist.value = (norm - 0.5) * 2.0;
-            // ... add more mappings here
-            this.ui.updateDisplay();
+        // Detect note-on and ignore note-off
+        if (type === 0x90 && value > 0) {
+            switch (note) {
+                case 36: // pad 1
+                    SceneActions.toggleFractal(this.scene);
+                    console.log(`Toggled u_shape_mode → ${this.scene.uniforms.u_shape_mode.value}`);
+                    break;
+                case 37: // pad 2
+                    SceneActions.resetAll(this.scene);
+                    console.log('All parameters reset via MIDI');
+                    break;
+                case 38: // pad 3                    
+                    SceneActions.randomizeColor(this.scene);
+                    SceneActions.randomizeColorPeriod(this.scene); 
+                    break;
+                case 39: // pad 4 - random palette
+                    const paletteIndex = Math.floor(Math.random() * 9);
+                    const btn = document.querySelector(`[data-palette="${paletteIndex}"]`);
+                    if (btn) btn.click();
+                    break;
+                case 40: // pad 5 - random shape
+                    const shapeIndex = Math.floor(Math.random() * 9);
+                    this.scene.uniforms.u_shape_type.value = shapeIndex;
+                    this.scene.rebuildMaterial();
+                    break;
+                case 41: // pad 6 - toggle mirror X
+                    this.scene.uniforms.u_mirror_x.value = this.scene.uniforms.u_mirror_x.value === 1.0 ? 0.0 : 1.0;
+                    this.scene.uniforms.u_mirror_y.value = this.scene.uniforms.u_mirror_y.value === 1.0 ? 0.0 : 1.0;
+                    break;
+                case 42: // pad 7 - cycle color type
+                    // this.scene.uniforms.u_color_type.value = (this.scene.uniforms.u_color_type.value + 1) % 13;
+                    // this.scene.rebuildMaterial();
+                    SceneActions.toggleColorMode(this.scene);
+                    break;
+                case 43: // pad 8 - cycle crunch type
+                    const crunchIndex = (this.scene.uniforms.u_crunch_type.value + 1) % 12;
+                    this.scene.uniforms.u_crunch_type.value = crunchIndex;
+                    this.scene.rebuildMaterial();
+                    break;
+                default:
+                    console.log(`No action assigned for MIDI note ${note}`);
+            }
         }
+
+        // Handle knobs (Control Change)
+        if (type === 0xb0) {
+            switch (note) {
+                case 70:
+                    this.scene.uniforms.u_uv_feedback_opacity.value = normalized;
+                    if (this.scene.uvFeedbackMaterial) {
+                        this.scene.uvFeedbackMaterial.uniforms.u_opacity.value = normalized;
+                    }
+                    break;
+                case 71:
+                    this.scene.uniforms.u_uv_feedback_distort.value = normalized * 0.5;
+                    if (this.scene.uvFeedbackMaterial) {
+                        this.scene.uvFeedbackMaterial.uniforms.u_distort.value = normalized * 0.5;
+                    }
+                    break;
+                case 72:
+                    this.scene.uniforms.u_warp_amplitude.value = normalized;
+                    break;
+                case 73:
+                    this.scene.uniforms.u_fractal_halving_z_base.value = normalized > 0 ? normalized * 10.0 : 0.01;
+                    break;
+                case 74:
+                    this.scene.uniforms.u_twist.value = (normalized - 0.5) * 2.0;
+                    break;
+                case 75:
+                    this.scene.uniforms.u_crunch.value = normalized;
+                    break;
+                case 76:
+                    this.scene.uniforms.u_box_size.value = normalized * 0.5;
+                    break;
+                case 77:
+                    this.scene.speed = normalized * 2.0;
+                    break;
+            }
+            console.log(`MIDI CC ${note}: ${normalized.toFixed(2)}`);
+        }
+
+        this.ui.updateDisplay();
     }
 }
